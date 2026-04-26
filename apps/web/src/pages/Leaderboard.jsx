@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
-import { LB } from "../data.js";
+import { useLeaderboard } from "../hooks.js";
 
 const RANGES = [
   ["day", "วันนี้"],
@@ -19,6 +19,7 @@ const PODIUM_GLOWS = [
 
 export const Leaderboard = () => {
   const [range, setRange] = useState("week");
+  const { data: LB } = useLeaderboard(range);
   return (
     <>
       <PageHead

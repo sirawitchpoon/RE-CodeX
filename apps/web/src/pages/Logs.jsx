@@ -1,13 +1,25 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
-import { LOGS } from "../data.js";
+import { useLogsLive } from "../hooks.js";
 
 const LEVELS = ["ALL", "INFO", "WARN", "ERROR", "EVENT"];
 
+// Logs hook returns API objects ({createdAt, level, source, event, message})
+// or mock array rows ([ts, level, source, event, message]). Normalize to a
+// consistent positional shape so the existing JSX doesn't change.
+function normalize(row) {
+  if (Array.isArray(row)) return row;
+  const ts = row.createdAt
+    ? new Date(row.createdAt).toISOString().replace("T", " ").slice(0, 19)
+    : "";
+  return [ts, row.level, row.source, row.event, row.message];
+}
+
 export const Logs = () => {
   const [filter, setFilter] = useState("ALL");
-  const filtered = LOGS.filter((l) => filter === "ALL" || l[1] === filter);
+  const live = useLogsLive(filter === "ALL" ? null : filter);
+  const filtered = live.map(normalize).filter((l) => filter === "ALL" || l[1] === filter);
 
   return (
     <>

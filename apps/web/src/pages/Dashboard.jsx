@@ -2,9 +2,12 @@ import { Icon } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
 import { StatCard } from "../components/StatCard.jsx";
 import { BotCardRow } from "../components/BotCardRow.jsx";
-import { BOTS } from "../data.js";
+import { useDashboard } from "../hooks.js";
 
-export const Dashboard = () => (
+export const Dashboard = () => {
+  const stats = useDashboard();
+  const BOTS = stats?.bots ?? [];
+  return (
   <>
     <PageHead
       tag="OVERVIEW"
@@ -107,7 +110,8 @@ export const Dashboard = () => (
       </div>
     </div>
   </>
-);
+  );
+};
 
 const DOT_STYLES = {
   cyan: { background: "var(--cyan)", boxShadow: "0 0 0 3px rgba(122,224,255,0.18)" },

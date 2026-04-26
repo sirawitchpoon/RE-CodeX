@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon, Sparkle } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
-import { GIVEAWAYS, ENTRIES } from "../data.js";
+import { useGiveaways, useGiveawayEntries, publishGiveaway, drawGiveaway, announceGiveaway } from "../hooks.js";
 
 const STATUS_PILL = {
   LIVE: "live",
@@ -10,10 +10,27 @@ const STATUS_PILL = {
 };
 
 export const Giveaway = () => {
-  const [selectedId, setSelectedId] = useState("gw_0042");
-  const selected = GIVEAWAYS.find((g) => g.id === selectedId);
+  const { data: GIVEAWAYS } = useGiveaways();
+  const [selectedId, setSelectedId] = useState(null);
+  // First load: select the first LIVE one, else first row, else null
+  useEffect(() => {
+    if (selectedId || !Array.isArray(GIVEAWAYS) || GIVEAWAYS.length === 0) return;
+    const live = GIVEAWAYS.find((g) => g.status === "LIVE");
+    setSelectedId((live ?? GIVEAWAYS[0]).id);
+  }, [GIVEAWAYS, selectedId]);
+  const selected = Array.isArray(GIVEAWAYS) ? GIVEAWAYS.find((g) => g.id === selectedId) : null;
+  const { data: ENTRIES } = useGiveawayEntries(selectedId);
   const [drawOpen, setDrawOpen] = useState(false);
   const [tab, setTab] = useState("entries");
+
+  // Lifecycle actions wired to API; in mock-only mode these are no-ops.
+  const onPublish = async () => { if (selectedId) await publishGiveaway(selectedId).catch(() => null); };
+  const onDraw = async () => {
+    if (!selectedId) return;
+    await drawGiveaway(selectedId, selected?.winnersCount ?? 1).catch(() => null);
+    setDrawOpen(true);
+  };
+  const onAnnounce = async () => { if (selectedId) await announceGiveaway(selectedId).catch(() => null); };
 
   return (
     <>
