@@ -18,8 +18,9 @@ uploads
 data
 infra/compose/data
 
-# Prisma generated
-packages/db/src/generated
+# Prisma-generated clients (output inside packages/db-*/src/_prisma so a
+# plain ESM relative import resolves under Node's strict resolver).
+packages/*/src/_prisma/
 
 # logs
 *.log

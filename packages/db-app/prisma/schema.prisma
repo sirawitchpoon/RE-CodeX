@@ -6,7 +6,10 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/app-client"
+  // Generate inside the package so a plain relative ESM import works.
+  // ".prisma/app-client" was not a valid ESM specifier under Node's strict
+  // resolver. The path is gitignored (packages/db-*/src/_prisma).
+  output   = "../src/_prisma"
 }
 
 datasource db {

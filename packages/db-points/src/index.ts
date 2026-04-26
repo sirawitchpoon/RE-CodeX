@@ -2,7 +2,7 @@
 // RoleReward, XpEvent, XpTotal). Custom output path keeps it isolated from
 // db-app's client.
 
-import { PrismaClient } from ".prisma/points-client";
+import { PrismaClient } from "./_prisma/index.js";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -19,4 +19,4 @@ if (process.env.NODE_ENV !== "production") {
   global.__recodexPointsPrisma = pointsPrisma;
 }
 
-export * from ".prisma/points-client";
+export * from "./_prisma/index.js";
