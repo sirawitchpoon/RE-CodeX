@@ -13,9 +13,9 @@
     "dev:bot-giveaway": "npm --workspace @recodex/bot-giveaway run dev",
     "dev:bot-level": "npm --workspace @recodex/bot-level run dev",
     "build": "npm --workspaces --if-present run build",
-    "prisma:generate": "npm --workspace @recodex/db run prisma:generate",
-    "prisma:migrate": "npm --workspace @recodex/db run prisma:migrate",
-    "prisma:seed": "npm --workspace @recodex/db run prisma:seed"
+    "prisma:generate": "npm --workspace @recodex/db-points run prisma:generate && npm --workspace @recodex/db-app run prisma:generate",
+    "prisma:migrate": "npm --workspace @recodex/db-points run prisma:migrate && npm --workspace @recodex/db-app run prisma:migrate",
+    "prisma:seed": "npm --workspace @recodex/db-points run prisma:seed"
   },
   "engines": {
     "node": ">=20"

@@ -1,16 +1,19 @@
-// Re:CodeX — Prisma schema
-// Multi-guild ready, MVP runs against one guild seeded from .env GUILD_ID.
+// Re:CodeX — points-db
+// HIGH-VALUE DATABASE. Owns Guild, User, BrandingConfig, LevelConfig,
+// RoleReward, XpEvent, XpTotal. Migrations on app features must NEVER touch
+// this database; rsync `points-data` volume independently for backups.
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/points-client"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("POINTS_DATABASE_URL")
 }
 
-// ─── Discord mirrors ──────────────────────────────────────────────────────────
+// ─── Discord mirrors (points-side) ────────────────────────────────────────────
 
 model Guild {
   id        String   @id
@@ -20,10 +23,8 @@ model Guild {
   branding    BrandingConfig?
   levelConfig LevelConfig?
   roleRewards RoleReward[]
-  giveaways   Giveaway[]
   xpTotals    XpTotal[]
   xpEvents    XpEvent[]
-  logs        Log[]
 }
 
 model User {
@@ -35,7 +36,6 @@ model User {
 
   xpTotals XpTotal[]
   xpEvents XpEvent[]
-  entries  GiveawayEntry[]
 }
 
 // ─── XP / Leveling ────────────────────────────────────────────────────────────
@@ -123,63 +123,6 @@ model RoleReward {
   @@index([guildId, level])
 }
 
-// ─── Giveaways ────────────────────────────────────────────────────────────────
-
-enum GiveawayStatus {
-  DRAFT
-  SCHEDULED
-  LIVE
-  ENDED
-}
-
-enum GiveawayPlatform {
-  TWITTER
-  BLUESKY
-  PIXIV
-}
-
-model Giveaway {
-  id             String         @id @default(cuid())
-  guildId        String
-  channelId      String
-  title          String
-  prize          String
-  description    String?
-  coverPath      String?
-  requiredRoleId String?
-  minLevel       Int            @default(0)
-  winnersCount   Int            @default(1)
-  status         GiveawayStatus @default(DRAFT)
-  startsAt       DateTime?
-  endsAt         DateTime?
-  messageId      String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  entries GiveawayEntry[]
-  guild   Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
-
-  @@index([guildId, status, endsAt])
-}
-
-model GiveawayEntry {
-  id          BigInt           @id @default(autoincrement())
-  giveawayId  String
-  userId      String
-  displayName String
-  platform    GiveawayPlatform
-  handle      String?
-  message     String?
-  isWinner    Boolean          @default(false)
-  createdAt   DateTime         @default(now())
-
-  giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([giveawayId, userId])
-  @@index([giveawayId, createdAt])
-}
-
 // ─── Branding (renamable labels) ──────────────────────────────────────────────
 
 model BrandingConfig {
@@ -190,41 +133,4 @@ model BrandingConfig {
   accentColor   String @default("#c77dff")
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
-}
-
-// ─── Logs / observability ─────────────────────────────────────────────────────
-
-enum LogLevel {
-  INFO
-  WARN
-  ERROR
-  EVENT
-}
-
-model Log {
-  id        BigInt   @id @default(autoincrement())
-  guildId   String?
-  level     LogLevel
-  source    String
-  event     String
-  message   String
-  meta      Json?
-  createdAt DateTime @default(now())
-
-  guild Guild? @relation(fields: [guildId], references: [id], onDelete: SetNull)
-
-  @@index([guildId, createdAt])
-  @@index([level, createdAt])
-}
-
-model BotInstance {
-  id            String   @id
-  name          String
-  status        String
-  version       String
-  startedAt     DateTime @default(now())
-  lastHeartbeat DateTime @default(now())
-  cpuPct        Float?
-  memMb         Int?
-  eventCount    BigInt   @default(0)
 }

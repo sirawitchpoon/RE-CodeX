@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from ".prisma/points-client";
 
 const prisma = new PrismaClient();
 
@@ -8,7 +8,7 @@ async function main() {
 
   if (!guildId) {
     console.warn(
-      "[seed] GUILD_ID not set — skipping default guild seed. Run again with GUILD_ID=<discord_guild_id> to create the default guild + LevelConfig + BrandingConfig.",
+      "[points seed] GUILD_ID not set — skipping. Set GUILD_ID to bootstrap default Guild + LevelConfig + BrandingConfig.",
     );
     return;
   }
@@ -31,7 +31,7 @@ async function main() {
     create: { guildId },
   });
 
-  console.log(`[seed] Seeded guild ${guildId} (${guildName}) with default LevelConfig + BrandingConfig.`);
+  console.log(`[points seed] Seeded guild ${guildId} (${guildName}).`);
 }
 
 main()

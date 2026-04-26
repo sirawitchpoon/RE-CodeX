@@ -1,0 +1,105 @@
+// Re:CodeX — app-db
+// Owns Giveaway, GiveawayEntry, Log, BotInstance. References to User/Guild
+// are SOFT FOREIGN KEYS (plain String columns) — the truth for those rows
+// lives in `points-db` and joins are done in application code. This isolation
+// is intentional: app-db schema migrations must never put points data at risk.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/app-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("APP_DATABASE_URL")
+}
+
+// ─── Giveaways ────────────────────────────────────────────────────────────────
+
+enum GiveawayStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+enum GiveawayPlatform {
+  TWITTER
+  BLUESKY
+  PIXIV
+}
+
+model Giveaway {
+  id             String         @id @default(cuid())
+  guildId        String         // soft FK → points-db Guild.id
+  channelId      String
+  title          String
+  prize          String
+  description    String?
+  coverPath      String?
+  requiredRoleId String?
+  minLevel       Int            @default(0)
+  winnersCount   Int            @default(1)
+  status         GiveawayStatus @default(DRAFT)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  messageId      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  entries GiveawayEntry[]
+
+  @@index([guildId, status, endsAt])
+}
+
+model GiveawayEntry {
+  id          BigInt           @id @default(autoincrement())
+  giveawayId  String
+  userId      String           // soft FK → points-db User.id
+  displayName String
+  platform    GiveawayPlatform
+  handle      String?
+  message     String?
+  isWinner    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId, createdAt])
+}
+
+// ─── Logs / observability ─────────────────────────────────────────────────────
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  EVENT
+}
+
+model Log {
+  id        BigInt   @id @default(autoincrement())
+  guildId   String?  // soft FK → points-db Guild.id
+  level     LogLevel
+  source    String
+  event     String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([guildId, createdAt])
+  @@index([level, createdAt])
+}
+
+model BotInstance {
+  id            String   @id
+  name          String
+  status        String
+  version       String
+  startedAt     DateTime @default(now())
+  lastHeartbeat DateTime @default(now())
+  cpuPct        Float?
+  memMb         Int?
+  eventCount    BigInt   @default(0)
+}
