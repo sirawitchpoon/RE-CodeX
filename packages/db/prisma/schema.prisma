@@ -1,0 +1,230 @@
+// Re:CodeX — Prisma schema
+// Multi-guild ready, MVP runs against one guild seeded from .env GUILD_ID.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Discord mirrors ──────────────────────────────────────────────────────────
+
+model Guild {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+
+  branding    BrandingConfig?
+  levelConfig LevelConfig?
+  roleRewards RoleReward[]
+  giveaways   Giveaway[]
+  xpTotals    XpTotal[]
+  xpEvents    XpEvent[]
+  logs        Log[]
+}
+
+model User {
+  id          String   @id
+  username    String
+  displayName String?
+  avatarHash  String?
+  createdAt   DateTime @default(now())
+
+  xpTotals XpTotal[]
+  xpEvents XpEvent[]
+  entries  GiveawayEntry[]
+}
+
+// ─── XP / Leveling ────────────────────────────────────────────────────────────
+
+enum XpSource {
+  TEXT
+  VOICE
+  REACTION
+  STAGE
+  STREAK
+  MANUAL
+}
+
+model XpEvent {
+  id        BigInt   @id @default(autoincrement())
+  guildId   String
+  userId    String
+  source    XpSource
+  amount    Int
+  channelId String?
+  messageId String?
+  createdAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, createdAt])
+  @@index([guildId, userId, createdAt])
+  @@index([guildId, channelId, createdAt])
+}
+
+model XpTotal {
+  guildId       String
+  userId        String
+  totalXp       BigInt    @default(0)
+  level         Int       @default(0)
+  textXp        BigInt    @default(0)
+  voiceXp       BigInt    @default(0)
+  reactionXp    BigInt    @default(0)
+  stageXp       BigInt    @default(0)
+  streakDays    Int       @default(0)
+  lastGrantAt   DateTime?
+  voiceJoinedAt DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, totalXp(sort: Desc)])
+}
+
+model LevelConfig {
+  guildId          String   @id
+  textEnabled      Boolean  @default(true)
+  textMin          Int      @default(3)
+  textMax          Int      @default(8)
+  textCooldownSec  Int      @default(60)
+  textMinChars     Int      @default(4)
+  excludedChannels String[] @default([])
+  voiceEnabled     Boolean  @default(true)
+  voicePerMinute   Int      @default(1)
+  reactionEnabled  Boolean  @default(true)
+  reactionAmount   Int      @default(2)
+  stageMultiplier  Int      @default(3)
+  streakEnabled    Boolean  @default(false)
+  streakBonus      Int      @default(50)
+  curveLinear      Int      @default(1000)
+  curveQuadratic   Int      @default(250)
+  updatedAt        DateTime @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model RoleReward {
+  id      String  @id @default(cuid())
+  guildId String
+  level   Int
+  roleId  String
+  hint    String?
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, level])
+  @@index([guildId, level])
+}
+
+// ─── Giveaways ────────────────────────────────────────────────────────────────
+
+enum GiveawayStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+enum GiveawayPlatform {
+  TWITTER
+  BLUESKY
+  PIXIV
+}
+
+model Giveaway {
+  id             String         @id @default(cuid())
+  guildId        String
+  channelId      String
+  title          String
+  prize          String
+  description    String?
+  coverPath      String?
+  requiredRoleId String?
+  minLevel       Int            @default(0)
+  winnersCount   Int            @default(1)
+  status         GiveawayStatus @default(DRAFT)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  messageId      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  entries GiveawayEntry[]
+  guild   Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status, endsAt])
+}
+
+model GiveawayEntry {
+  id          BigInt           @id @default(autoincrement())
+  giveawayId  String
+  userId      String
+  displayName String
+  platform    GiveawayPlatform
+  handle      String?
+  message     String?
+  isWinner    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId, createdAt])
+}
+
+// ─── Branding (renamable labels) ──────────────────────────────────────────────
+
+model BrandingConfig {
+  guildId       String @id
+  signalsLabel  String @default("Signals")
+  xpLabel       String @default("EXP")
+  currencyEmoji String @default("✨")
+  accentColor   String @default("#c77dff")
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// ─── Logs / observability ─────────────────────────────────────────────────────
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  EVENT
+}
+
+model Log {
+  id        BigInt   @id @default(autoincrement())
+  guildId   String?
+  level     LogLevel
+  source    String
+  event     String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  guild Guild? @relation(fields: [guildId], references: [id], onDelete: SetNull)
+
+  @@index([guildId, createdAt])
+  @@index([level, createdAt])
+}
+
+model BotInstance {
+  id            String   @id
+  name          String
+  status        String
+  version       String
+  startedAt     DateTime @default(now())
+  lastHeartbeat DateTime @default(now())
+  cpuPct        Float?
+  memMb         Int?
+  eventCount    BigInt   @default(0)
+}
