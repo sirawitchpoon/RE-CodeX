@@ -1,0 +1,23 @@
+{
+  "name": "recodex",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Re:CodeX — VTuber-themed Discord bot platform (backoffice + 2 bots + API)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @recodex/web run dev",
+    "dev:api": "npm --workspace @recodex/api run dev",
+    "dev:bot-giveaway": "npm --workspace @recodex/bot-giveaway run dev",
+    "dev:bot-level": "npm --workspace @recodex/bot-level run dev",
+    "build": "npm --workspaces --if-present run build",
+    "prisma:generate": "npm --workspace @recodex/db run prisma:generate",
+    "prisma:migrate": "npm --workspace @recodex/db run prisma:migrate",
+    "prisma:seed": "npm --workspace @recodex/db run prisma:seed"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
