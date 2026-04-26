@@ -1,0 +1,33 @@
+# Re:CodeX Caddy config.
+#
+# CADDY_DOMAIN comes from compose .env. For LAN/dev set it to ":80" — Caddy
+# serves HTTP only. For production, set it to your domain (e.g.
+# `re-codex.example.com`) and Caddy will request a Let's Encrypt cert
+# automatically.
+#
+# Routing:
+#   /api/events/* → api (SSE; flush_interval -1 disables proxy buffering)
+#   /api/*        → api
+#   /uploads/*    → api (static cover images)
+#   everything else → web (nginx serving the SPA)
+
+{$CADDY_DOMAIN} {
+	encode zstd gzip
+
+	# SSE — must NOT buffer, must NOT timeout
+	@events path /api/events/*
+	reverse_proxy @events api:3000 {
+		flush_interval -1
+		transport http {
+			read_timeout 24h
+		}
+	}
+
+	@api path /api/*
+	reverse_proxy @api api:3000
+
+	@uploads path /uploads/*
+	reverse_proxy @uploads api:3000
+
+	reverse_proxy web:80
+}

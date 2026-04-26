@@ -1,0 +1,185 @@
+# Re:CodeX production stack.
+#
+#   docker compose --env-file ../../.env -f docker-compose.yml up -d --build
+#
+# Two Postgres containers by design: points-db (XP/levels — high-value)
+# and app-db (giveaway/logs/bot). Migrations on app-db never touch points-db.
+# Each has its own one-shot migrate service that must complete before the
+# bots/api start.
+
+name: recodex
+
+services:
+  # ─── Datastores ──────────────────────────────────────────────────────────
+  points-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POINTS_DB_NAME:-recodex_points}
+      POSTGRES_USER: ${POINTS_DB_USER:-recodex_points}
+      POSTGRES_PASSWORD: ${POINTS_DB_PASSWORD}
+    volumes:
+      - points-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POINTS_DB_USER:-recodex_points} -d ${POINTS_DB_NAME:-recodex_points}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${APP_DB_NAME:-recodex_app}
+      POSTGRES_USER: ${APP_DB_USER:-recodex_app}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - app-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-recodex_app} -d ${APP_DB_NAME:-recodex_app}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ─── One-shot migrators ─────────────────────────────────────────────────
+  migrate-points:
+    build:
+      context: ../../
+      dockerfile: packages/db-points/Dockerfile
+    environment:
+      POINTS_DATABASE_URL: postgresql://${POINTS_DB_USER:-recodex_points}:${POINTS_DB_PASSWORD}@points-db:5432/${POINTS_DB_NAME:-recodex_points}
+      GUILD_ID: ${GUILD_ID}
+      GUILD_NAME: ${GUILD_NAME:-Re:CodeX}
+    depends_on:
+      points-db:
+        condition: service_healthy
+    restart: "no"
+
+  migrate-app:
+    build:
+      context: ../../
+      dockerfile: packages/db-app/Dockerfile
+    environment:
+      APP_DATABASE_URL: postgresql://${APP_DB_USER:-recodex_app}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME:-recodex_app}
+    depends_on:
+      app-db:
+        condition: service_healthy
+    restart: "no"
+
+  # ─── Application services ───────────────────────────────────────────────
+  api:
+    build:
+      context: ../../
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: "3000"
+      POINTS_DATABASE_URL: postgresql://${POINTS_DB_USER:-recodex_points}:${POINTS_DB_PASSWORD}@points-db:5432/${POINTS_DB_NAME:-recodex_points}
+      APP_DATABASE_URL: postgresql://${APP_DB_USER:-recodex_app}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME:-recodex_app}
+      REDIS_URL: redis://redis:6379
+      UPLOADS_DIR: /data/uploads
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      migrate-points:
+        condition: service_completed_successfully
+      migrate-app:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  bot-giveaway:
+    build:
+      context: ../../
+      dockerfile: apps/bot-giveaway/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      GIVEAWAY_BOT_TOKEN: ${GIVEAWAY_BOT_TOKEN}
+      GIVEAWAY_BOT_APP_ID: ${GIVEAWAY_BOT_APP_ID}
+      GUILD_ID: ${GUILD_ID}
+      POINTS_DATABASE_URL: postgresql://${POINTS_DB_USER:-recodex_points}:${POINTS_DB_PASSWORD}@points-db:5432/${POINTS_DB_NAME:-recodex_points}
+      APP_DATABASE_URL: postgresql://${APP_DB_USER:-recodex_app}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME:-recodex_app}
+      REDIS_URL: redis://redis:6379
+      UPLOADS_DIR: /data/uploads
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - uploads:/data/uploads:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+  bot-level:
+    build:
+      context: ../../
+      dockerfile: apps/bot-level/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LEVEL_BOT_TOKEN: ${LEVEL_BOT_TOKEN}
+      LEVEL_BOT_APP_ID: ${LEVEL_BOT_APP_ID}
+      GUILD_ID: ${GUILD_ID}
+      POINTS_DATABASE_URL: postgresql://${POINTS_DB_USER:-recodex_points}:${POINTS_DB_PASSWORD}@points-db:5432/${POINTS_DB_NAME:-recodex_points}
+      APP_DATABASE_URL: postgresql://${APP_DB_USER:-recodex_app}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME:-recodex_app}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../../
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE: ${PUBLIC_API_BASE:-/}
+        VITE_GUILD_ID: ${GUILD_ID}
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-:80}
+    depends_on:
+      - web
+      - api
+
+volumes:
+  points-data:    # 🔒 backup separately — high-value (XP totals)
+  app-data:
+  redis-data:
+  uploads:
+  caddy-data:
+  caddy-config:
