@@ -16,9 +16,11 @@ import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { sub, disconnectRedis } from "./redis.js";
 import { hub } from "./sse.js";
+import path from "node:path";
 import { auth } from "./middleware/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { eventsRouter } from "./routes/events.js";
+import { giveawaysRouter } from "./routes/giveaways.js";
 
 const app = express();
 
@@ -35,9 +37,21 @@ app.use(
   }),
 );
 
+// Static uploads served BEFORE auth — public read for cover images is fine
+// (they're already shown inside Discord embeds via the same URL). When auth
+// is added, /uploads can stay public or move behind auth as a separate call.
+app.use(
+  "/uploads",
+  express.static(path.resolve(env.UPLOADS_DIR), {
+    fallthrough: false,
+    maxAge: "7d",
+  }),
+);
+
 app.use("/api", auth);
 app.use("/api", healthRouter);
 app.use("/api", eventsRouter);
+app.use("/api", giveawaysRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "not_found" });
