@@ -37,3 +37,6 @@ yarn-error.log*
 # coverage
 coverage
 .nyc_output
+
+# Claude Code session state (settings + isolation worktrees) — local only
+.claude/
