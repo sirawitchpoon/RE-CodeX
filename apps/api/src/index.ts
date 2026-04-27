@@ -26,6 +26,7 @@ import { leaderboardRouter } from "./routes/leaderboard.js";
 import { usersRouter } from "./routes/users.js";
 import { logsRouter } from "./routes/logs.js";
 import { dashboardRouter } from "./routes/dashboard.js";
+import { authRouter } from "./routes/auth.js";
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use(
 );
 
 app.use("/api", auth);
+app.use("/api", authRouter);
 app.use("/api", healthRouter);
 app.use("/api", eventsRouter);
 app.use("/api", giveawaysRouter);

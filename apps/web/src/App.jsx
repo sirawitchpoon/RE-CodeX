@@ -11,6 +11,9 @@ import { UserProfile } from "./pages/UserProfile.jsx";
 import { Settings } from "./pages/Settings.jsx";
 import { DiscordMockup } from "./pages/DiscordMockup.jsx";
 import { Placeholder } from "./pages/Placeholder.jsx";
+import { Login } from "./pages/Login.jsx";
+import { API_ENABLED } from "./api.js";
+import { getAuth } from "./auth.js";
 
 const PAGES = {
   dashboard: {
@@ -89,6 +92,7 @@ const DEFAULT_TWEAKS = { theme: "dark", nav: "side", density: "comfy" };
 const App = () => {
   const [active, setActive] = useState("dashboard");
   const [tweaks, setTweaks] = useState(DEFAULT_TWEAKS);
+  const [auth, setAuthState] = useState(() => getAuth());
 
   useEffect(() => {
     const html = document.documentElement;
@@ -97,13 +101,26 @@ const App = () => {
     html.dataset.density = tweaks.density;
   }, [tweaks]);
 
+  // Listen for login/logout events fired from src/auth.js
+  useEffect(() => {
+    const onChange = () => setAuthState(getAuth());
+    window.addEventListener("recodex:auth-changed", onChange);
+    return () => window.removeEventListener("recodex:auth-changed", onChange);
+  }, []);
+
   const setTweak = (k, v) => setTweaks((t) => ({ ...t, [k]: v }));
+
+  // When the API is enabled, gate the whole app behind login. In mock-only
+  // mode (no VITE_API_BASE) we skip auth so the design preview works.
+  if (API_ENABLED && !auth?.token) {
+    return <Login />;
+  }
 
   const page = PAGES[active] || PAGES.dashboard;
 
   return (
     <>
-      <AppShell active={active} crumbs={page.crumbs} onNavigate={setActive}>
+      <AppShell active={active} crumbs={page.crumbs} onNavigate={setActive} user={auth?.user}>
         {page.render()}
       </AppShell>
       <TweaksPanel tweaks={tweaks} setTweak={setTweak} />

@@ -199,21 +199,45 @@ The change shows up:
 
 ## Auth
 
-Not shipped this round (LAN/dev per scope). The swap point is
-[apps/api/src/middleware/auth.ts](apps/api/src/middleware/auth.ts) — it's a
-no-op middleware mounted on every `/api/*` route. Replace its body with
-JWT, Discord OAuth, or basic-auth and every endpoint stays untouched.
+Username/password login backed by JWT. Tokens live in `localStorage` on the
+client and are sent as `Authorization: Bearer <token>` on every API call
+(SSE streams accept the token via `?token=` query because EventSource
+can't set headers).
 
-When moving past LAN, at minimum add `basicauth` in the Caddyfile on
-`/api/*`:
+**Public routes** (no token required): `GET /api/health`, `POST /api/auth/login`.
+Everything else returns `401` without a valid token.
 
-```caddy
-@api path /api/*
-basicauth @api {
-  admin <bcrypt-hash>
-}
-reverse_proxy @api api:3000
+**Brute-force protection:** 5 failed logins per username in 15 min →
+account locks out for 15 min (Redis SETEX counter).
+
+**Swap point:** [apps/api/src/middleware/auth.ts](apps/api/src/middleware/auth.ts).
+The `PUBLIC_PATHS` set defines which routes bypass the check; replace
+`signToken` / `jwt.verify` to switch to Discord OAuth later without
+touching any route file.
+
+### Create the first admin user
+
+After `docker compose up -d` (so `app-db` and `migrate-app` are ready):
+
+```bash
+# .env already has ADMIN_USERNAME + ADMIN_PASSWORD
+docker compose --env-file .env -f infra/compose/docker-compose.yml \
+  --profile seed run --rm seed-admin
 ```
+
+Re-run the same command (with a new `ADMIN_PASSWORD` in `.env`) to rotate
+the password — the seed CLI does an upsert.
+
+### Required env
+
+In addition to the existing list, the auth feature adds:
+
+| Var | Purpose |
+| --- | --- |
+| `JWT_SECRET` | HS256 signing key. **Generate with `openssl rand -hex 32`.** Min 16 chars. |
+| `JWT_TTL_HOURS` | How long a session lasts. Default 24. |
+| `ADMIN_USERNAME` | First admin's username (only consumed by the seed CLI) |
+| `ADMIN_PASSWORD` | First admin's password (≥8 chars). Re-run seed to rotate. |
 
 ## License
 

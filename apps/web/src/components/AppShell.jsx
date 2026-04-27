@@ -1,4 +1,5 @@
 import { Icon, LogoMark } from "./Icon.jsx";
+import { logout } from "../auth.js";
 
 const NAV = [
   {
@@ -31,7 +32,7 @@ const NAV = [
   },
 ];
 
-export const Sidebar = ({ active = "dashboard", onNavigate }) => (
+export const Sidebar = ({ active = "dashboard", onNavigate, user }) => (
   <aside className="sidebar">
     <div className="brand">
       <div className="brand-mark">
@@ -67,11 +68,21 @@ export const Sidebar = ({ active = "dashboard", onNavigate }) => (
     </div>
 
     <div className="user-card">
-      <div className="avatar">AD</div>
+      <div className="avatar">{(user?.username ?? "AD").slice(0, 2).toUpperCase()}</div>
       <div className="user-meta">
-        <strong>admin</strong>
+        <strong>{user?.username ?? "admin"}</strong>
         <span>recodex.staff</span>
       </div>
+      {user && (
+        <button
+          className="icon-btn"
+          title="Sign out"
+          onClick={logout}
+          style={{ marginLeft: "auto" }}
+        >
+          <Icon name="x" size={15} />
+        </button>
+      )}
     </div>
   </aside>
 );
@@ -101,9 +112,9 @@ export const Topbar = ({ crumbs = [] }) => (
   </div>
 );
 
-export const AppShell = ({ active, crumbs, onNavigate, children }) => (
+export const AppShell = ({ active, crumbs, onNavigate, user, children }) => (
   <div className="app">
-    <Sidebar active={active} onNavigate={onNavigate} />
+    <Sidebar active={active} onNavigate={onNavigate} user={user} />
     <main className="main">
       <Topbar crumbs={crumbs} />
       <div className="content scrollbar-thin">{children}</div>

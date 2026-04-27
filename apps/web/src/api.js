@@ -9,20 +9,37 @@
 // previewing pure design without a backend running).
 
 import { useEffect, useRef, useState } from "react";
+import { getToken, logout } from "./auth.js";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 export const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
 
 export const API_ENABLED = BASE.length > 0;
 
+function authHeaders(extra = {}) {
+  const token = getToken();
+  return token
+    ? { ...extra, Authorization: `Bearer ${token}` }
+    : { ...extra };
+}
+
+function handle401(res) {
+  if (res.status === 401) {
+    // Token expired or revoked — drop it; App.jsx listens on auth-changed
+    // and will swap to <Login/> on the next render.
+    logout();
+  }
+}
+
 export async function api(path, init = {}) {
   if (!API_ENABLED) throw new Error("api_disabled");
   const url = path.startsWith("http") ? path : `${BASE}${path}`;
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    headers: authHeaders({ "Content-Type": "application/json", ...(init.headers ?? {}) }),
     ...init,
   });
   if (!res.ok) {
+    handle401(res);
     const body = await res.text().catch(() => "");
     throw new Error(`api ${res.status}: ${body || res.statusText}`);
   }
@@ -33,8 +50,13 @@ export async function api(path, init = {}) {
 /** multipart variant — pass a FormData. */
 export async function apiUpload(path, formData) {
   if (!API_ENABLED) throw new Error("api_disabled");
-  const res = await fetch(`${BASE}${path}`, { method: "POST", body: formData });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    body: formData,
+    headers: authHeaders(),
+  });
   if (!res.ok) {
+    handle401(res);
     const body = await res.text().catch(() => "");
     throw new Error(`api ${res.status}: ${body || res.statusText}`);
   }
@@ -86,7 +108,11 @@ export function useSSE(path, handlers) {
 
   useEffect(() => {
     if (!API_ENABLED || !path) return undefined;
-    const url = path.startsWith("http") ? path : `${BASE}${path}`;
+    const token = getToken();
+    let url = path.startsWith("http") ? path : `${BASE}${path}`;
+    if (token) {
+      url += url.includes("?") ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`;
+    }
     const es = new EventSource(url);
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);

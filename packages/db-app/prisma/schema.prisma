@@ -106,3 +106,16 @@ model BotInstance {
   memMb         Int?
   eventCount    BigInt   @default(0)
 }
+
+// ─── Backoffice auth ──────────────────────────────────────────────────────────
+// Admin users for the SPA. Lives in app-db (not points-db) because admin
+// access lists are infrastructure / feature-adjacent — points-db stays
+// strictly for XP data so backups don't conflate the two.
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+}

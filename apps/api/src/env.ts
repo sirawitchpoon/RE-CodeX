@@ -18,6 +18,10 @@ const schema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
   CORS_ORIGIN: z.string().min(1).default("*"),
+  // JWT signing key for backoffice admin sessions. Must be at least 32
+  // chars in production. Generate with: `openssl rand -hex 32`.
+  JWT_SECRET: z.string().min(16),
+  JWT_TTL_HOURS: z.coerce.number().int().positive().default(24),
 });
 
 const parsed = schema.safeParse(process.env);

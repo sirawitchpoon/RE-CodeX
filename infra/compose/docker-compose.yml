@@ -78,6 +78,25 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Run on demand: `docker compose run --rm seed-admin`. Reads ADMIN_USERNAME
+  # + ADMIN_PASSWORD from .env, upserts the AdminUser row. Re-run to rotate
+  # the password.
+  seed-admin:
+    build:
+      context: ../../
+      dockerfile: packages/db-app/Dockerfile
+    environment:
+      APP_DATABASE_URL: postgresql://${APP_DB_USER:-recodex_app}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME:-recodex_app}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    entrypoint: ["/sbin/tini","--"]
+    command: ["sh","-c","cd /app && npm --workspace @recodex/db-app run seed:admin"]
+    depends_on:
+      migrate-app:
+        condition: service_completed_successfully
+    profiles: ["seed"]
+    restart: "no"
+
   # ─── Application services ───────────────────────────────────────────────
   api:
     build:
@@ -93,6 +112,8 @@ services:
       UPLOADS_DIR: /data/uploads
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_HOURS: ${JWT_TTL_HOURS:-24}
     volumes:
       - uploads:/data/uploads
     depends_on:
