@@ -15,7 +15,8 @@ COPY packages/db-points/package.json  packages/db-points/package.json
 COPY packages/shared/package.json     packages/shared/package.json
 RUN npm install --workspaces --include-workspace-root --no-audit --no-fund
 COPY packages/db-app/ packages/db-app/
-ENV NODE_ENV=production
 WORKDIR /app/packages/db-app
+RUN npx prisma generate --schema=prisma/schema.prisma
+ENV NODE_ENV=production
 ENTRYPOINT ["/sbin/tini","--"]
-CMD ["sh","-c","npx prisma migrate deploy --schema=prisma/schema.prisma"]
+CMD ["sh","-c","npx prisma db push --schema=prisma/schema.prisma --accept-data-loss"]

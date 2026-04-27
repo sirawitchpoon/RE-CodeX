@@ -1,10 +1,16 @@
 export const Sparkline = ({ data, color = "var(--accent)", w = 140, h = 38 }) => {
   const p = 2;
+  if (!Array.isArray(data) || data.length === 0) {
+    return <svg width={w} height={h} />;
+  }
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
   const pts = data.map((v, i) => {
-    const x = p + (i / (data.length - 1)) * (w - p * 2);
+    const x =
+      data.length === 1
+        ? w / 2
+        : p + (i / (data.length - 1)) * (w - p * 2);
     const y = h - p - ((v - min) / range) * (h - p * 2);
     return [x, y];
   });

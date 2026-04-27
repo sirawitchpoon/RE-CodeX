@@ -50,7 +50,7 @@ export const Logs = () => {
           </div>
           <div style={{ flex: 1 }} />
           <span className="pill live">
-            <Icon name="activity" size={9} /> live · {LOGS.length} events / min
+            <Icon name="activity" size={9} /> live · {filtered.length} events
           </span>
         </div>
         <div className="log-table">

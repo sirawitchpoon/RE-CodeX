@@ -2,7 +2,7 @@ import { Icon } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
 import { StatCard } from "../components/StatCard.jsx";
 import { Sparkline } from "../components/Sparkline.jsx";
-import { MEMBERS } from "../data.js";
+import { useMembers, useDashboard } from "../hooks.js";
 
 const STATUS_COLOR = {
   online: "var(--green)",
@@ -12,7 +12,11 @@ const STATUS_COLOR = {
 
 const xpSpark = [12, 18, 26, 22, 30, 28, 36, 32, 40, 44, 48, 52];
 
-export const Members = () => (
+export const Members = () => {
+  const { data: MEMBERS } = useMembers();
+  const stats = useDashboard();
+  const totalMembers = stats?.totalMembers ?? MEMBERS.length;
+  return (
   <>
     <PageHead
       tag="MEMBERS"
@@ -38,10 +42,10 @@ export const Members = () => (
         marginBottom: "var(--gap)",
       }}
     >
-      <StatCard label="Total Members" value="1,243" delta="+24 this week" deltaDir="up" />
-      <StatCard label="Online Now" value="847" delta="68%" deltaDir="flat" />
-      <StatCard label="Stargazers" value="142" delta="+6" deltaDir="up" />
-      <StatCard label="New This Month" value="98" delta="+12.4%" deltaDir="up" />
+      <StatCard label="Total Members" value={totalMembers.toLocaleString()} />
+      <StatCard label="Online Now" value="—" delta="ต้องเชื่อม Discord gateway" deltaDir="flat" />
+      <StatCard label="Stargazers" value="—" delta="ต้องเชื่อม Discord roles" deltaDir="flat" />
+      <StatCard label="New This Month" value="—" />
     </div>
 
     <div className="card">
@@ -150,4 +154,5 @@ export const Members = () => (
       </table>
     </div>
   </>
-);
+  );
+};

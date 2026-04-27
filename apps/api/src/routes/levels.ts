@@ -102,6 +102,28 @@ levelsRouter.delete("/level/:guildId/role-rewards/:id", async (req, res) => {
   res.status(204).end();
 });
 
+// ─── Reset XP ──────────────────────────────────────────────────────────────
+//
+// Wipes XpEvent + XpTotal for a guild. Used before launch to clear test data
+// without rebuilding the DB. Caller must POST { confirm: "reset" } so a stray
+// curl can't nuke production by accident.
+
+const resetSchema = z.object({ confirm: z.literal("reset") });
+
+levelsRouter.post("/level/:guildId/xp-reset", async (req, res) => {
+  const parsed = resetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "missing_confirm" });
+    return;
+  }
+  const guildId = req.params.guildId;
+  const [events, totals] = await pointsPrisma.$transaction([
+    pointsPrisma.xpEvent.deleteMany({ where: { guildId } }),
+    pointsPrisma.xpTotal.deleteMany({ where: { guildId } }),
+  ]);
+  res.json({ ok: true, deletedEvents: events.count, deletedTotals: totals.count });
+});
+
 // ─── Branding (renamable labels) ───────────────────────────────────────────
 
 const brandingSchema = z.object({

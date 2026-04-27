@@ -9,7 +9,7 @@
 // password.
 
 import bcrypt from "bcryptjs";
-import { PrismaClient } from "./_prisma/index.js";
+import { PrismaClient } from "../src/_prisma/index.js";
 
 const prisma = new PrismaClient();
 

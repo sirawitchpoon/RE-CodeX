@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getToken, logout } from "./auth.js";
 
-const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+export const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 export const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
 
 export const API_ENABLED = BASE.length > 0;

@@ -148,18 +148,55 @@ For each of the **two** Bot applications in the [Discord Developer Portal](https
 
 Slash commands (`/rank`, `/leaderboard`) register guild-scoped on bot-level boot — they appear in the slash menu within ~60 seconds.
 
+## Backoffice features
+
+### Giveaway workflow
+
+1. **สร้าง Giveaway** — Giveaway page → "สร้าง Giveaway" button → fill form (Channel ID is the Discord channel ID where the embed will post, requires Developer Mode to copy).
+2. Giveaway is created in `DRAFT` status.
+3. Click **Publish** → bot posts the embed in Discord with the "เข้าร่วม Giveaway" button.
+4. Users click the button → fill the 4-field modal → entry stored.
+5. When ready → click **สุ่มผู้โชคดี** → Roll → **ประกาศใน Discord**.
+
+### XP feature toggles
+
+LevelRules page → XP Sources card. Toggle Text / Voice / Reactions / Daily Streak on or off. Click **บันทึก** to persist; the change propagates to bot-level via Redis pub/sub immediately (no restart needed).
+
+### Reset XP before launch
+
+LevelRules page → header → "Reset XP คะแนนทั้งเซิร์ฟ". Must type `RESET` in the confirmation field. Wipes `XpEvent` + `XpTotal` for the guild; LevelConfig and RoleRewards are preserved.
+
+Equivalent direct SQL:
+```bash
+docker compose --env-file .env -f infra/compose/docker-compose.yml exec points-db \
+  psql -U recodex_points -d recodex_points \
+  -c "DELETE FROM \"XpEvent\" WHERE \"guildId\"='<guild_id>'; DELETE FROM \"XpTotal\" WHERE \"guildId\"='<guild_id>';"
+```
+
+### Sample data (dev/preview only)
+
+To populate 3 sample giveaways (LIVE / SCHEDULED / ENDED) so the backoffice renders something before real Discord activity flows in:
+
+```bash
+docker compose --env-file .env -f infra/compose/docker-compose.yml \
+  --profile seed run --rm seed-sample
+```
+
+This is **idempotent** (clears `sample_*` rows before inserting) and is **never run automatically** — only on demand.
+
 ## Smoke test
 
 After `docker compose up -d`:
 
 1. `curl https://<domain>/api/health` → JSON with all `true`
-2. Open the SPA → all pages navigate
+2. Open the SPA → all pages navigate without errors
 3. Post a >4-char message in a non-excluded channel → `XpTotal.totalXp` grows; `/rank` reflects it
 4. Insert a `RoleReward` at level 1 (POST `/api/level/<guildId>/role-rewards`) → keep posting until level crosses → bot adds the role
 5. From the backoffice Giveaway page: create + publish → bot posts the embed with the **เข้าร่วม Giveaway** button
 6. Click the button in Discord → 4-field modal → submit → ephemeral confirmation → entry appears in the backoffice
 7. Click `สุ่มผู้โชคดี` then `ประกาศใน Discord` → bot replies in-channel with mentions
-8. `psql` into `points-db` and `UPDATE "BrandingConfig" SET "signalsLabel"='Stardust', "xpLabel"='Aether'` → next `/rank` and next published embed use the new labels
+8. Toggle off "Text Messages" in LevelRules → บันทึก → post a message → XP does not increase
+9. `psql` into `points-db` and `UPDATE "BrandingConfig" SET "signalsLabel"='Stardust', "xpLabel"='Aether'` → next `/rank` and next published embed use the new labels
 
 ## Backups
 

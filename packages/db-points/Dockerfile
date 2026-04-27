@@ -16,9 +16,10 @@ COPY packages/db-points/package.json  packages/db-points/package.json
 COPY packages/shared/package.json     packages/shared/package.json
 RUN npm install --workspaces --include-workspace-root --no-audit --no-fund
 COPY packages/db-points/ packages/db-points/
-ENV NODE_ENV=production
 WORKDIR /app/packages/db-points
+RUN npx prisma generate --schema=prisma/schema.prisma
+ENV NODE_ENV=production
 ENTRYPOINT ["/sbin/tini","--"]
 # `migrate deploy` is idempotent (re-running is safe). The seed re-upserts
 # the default Guild/LevelConfig/BrandingConfig from GUILD_ID env.
-CMD ["sh","-c","npx prisma migrate deploy --schema=prisma/schema.prisma && npx prisma db seed"]
+CMD ["sh","-c","npx prisma db push --schema=prisma/schema.prisma --accept-data-loss && npx prisma db seed"]

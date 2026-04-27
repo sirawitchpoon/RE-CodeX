@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon, Sparkle } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
-import { useGiveaways, useGiveawayEntries, publishGiveaway, drawGiveaway, announceGiveaway } from "../hooks.js";
+import { useGiveaways, useGiveawayEntries, publishGiveaway, drawGiveaway, announceGiveaway, createGiveaway } from "../hooks.js";
 
 const STATUS_PILL = {
   LIVE: "live",
@@ -10,7 +10,7 @@ const STATUS_PILL = {
 };
 
 export const Giveaway = () => {
-  const { data: GIVEAWAYS } = useGiveaways();
+  const { data: GIVEAWAYS, reload: reloadGiveaways } = useGiveaways();
   const [selectedId, setSelectedId] = useState(null);
   // First load: select the first LIVE one, else first row, else null
   useEffect(() => {
@@ -19,18 +19,35 @@ export const Giveaway = () => {
     setSelectedId((live ?? GIVEAWAYS[0]).id);
   }, [GIVEAWAYS, selectedId]);
   const selected = Array.isArray(GIVEAWAYS) ? GIVEAWAYS.find((g) => g.id === selectedId) : null;
-  const { data: ENTRIES } = useGiveawayEntries(selectedId);
+  const { data: ENTRIES, reload: reloadEntries } = useGiveawayEntries(selectedId);
   const [drawOpen, setDrawOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [tab, setTab] = useState("entries");
+  const [actionMsg, setActionMsg] = useState(null);
 
-  // Lifecycle actions wired to API; in mock-only mode these are no-ops.
-  const onPublish = async () => { if (selectedId) await publishGiveaway(selectedId).catch(() => null); };
-  const onDraw = async () => {
+  const refresh = async () => { await Promise.all([reloadGiveaways(), reloadEntries()]); };
+
+  const onPublish = async () => {
     if (!selectedId) return;
-    await drawGiveaway(selectedId, selected?.winnersCount ?? 1).catch(() => null);
-    setDrawOpen(true);
+    try {
+      await publishGiveaway(selectedId);
+      setActionMsg({ kind: "ok", text: "เผยแพร่ Giveaway แล้ว — บอทกำลังโพสต์ใน Discord" });
+      await refresh();
+    } catch (e) {
+      setActionMsg({ kind: "err", text: `Publish ล้มเหลว: ${e.message}` });
+    }
   };
-  const onAnnounce = async () => { if (selectedId) await announceGiveaway(selectedId).catch(() => null); };
+
+  const onAnnounce = async () => {
+    if (!selectedId) return;
+    try {
+      await announceGiveaway(selectedId);
+      setActionMsg({ kind: "ok", text: "ประกาศผู้โชคดีแล้ว" });
+      await refresh();
+    } catch (e) {
+      setActionMsg({ kind: "err", text: `Announce ล้มเหลว: ${e.message}` });
+    }
+  };
 
   return (
     <>
@@ -43,7 +60,7 @@ export const Giveaway = () => {
             <button className="btn ghost">
               <Icon name="calendar" size={13} /> History
             </button>
-            <button className="btn primary">
+            <button className="btn primary" onClick={() => setCreateOpen(true)}>
               <Icon name="plus" size={13} /> สร้าง Giveaway
             </button>
           </>
@@ -92,6 +109,26 @@ export const Giveaway = () => {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--gap)" }}>
+          {actionMsg && (
+            <div
+              className="card"
+              style={{
+                padding: "10px 14px",
+                fontSize: 13,
+                color: actionMsg.kind === "ok" ? "var(--green)" : "var(--red)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <span>{actionMsg.text}</span>
+              <button className="icon-btn" onClick={() => setActionMsg(null)}>
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          )}
+          {selected ? (<>
           <div className="card hero-card">
             <div className="hero-cover" style={{ background: selected.cover }}>
               <svg className="sparkles" viewBox="0 0 400 88" preserveAspectRatio="none">
@@ -118,14 +155,18 @@ export const Giveaway = () => {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
+                  {(selected.status === "DRAFT" || selected.status === "SCHEDULED") && (
+                    <button className="btn primary btn-sm" onClick={onPublish}>
+                      <Icon name="send" size={11} /> Publish
+                    </button>
+                  )}
+                  {selected.status === "LIVE" && (
+                    <button className="btn primary btn-sm" onClick={onAnnounce}>
+                      <Icon name="send" size={11} /> Announce winners
+                    </button>
+                  )}
                   <button className="btn ghost btn-sm">
                     <Icon name="edit" size={11} /> แก้ไข
-                  </button>
-                  <button className="btn ghost btn-sm">
-                    <Icon name="copy" size={11} /> Duplicate
-                  </button>
-                  <button className="btn ghost btn-sm danger">
-                    <Icon name="x" size={11} /> ปิดกิจกรรม
                   </button>
                 </div>
               </div>
@@ -178,7 +219,11 @@ export const Giveaway = () => {
                   <button className="btn ghost btn-sm">
                     <Icon name="download" size={11} /> Export CSV
                   </button>
-                  <button className="btn primary btn-sm" onClick={() => setDrawOpen(true)}>
+                  <button
+                    className="btn primary btn-sm"
+                    onClick={() => setDrawOpen(true)}
+                    disabled={!selected || selected.status === "ENDED"}
+                  >
                     <Icon name="shuffle" size={11} /> สุ่มผู้โชคดี
                   </button>
                 </div>
@@ -319,10 +364,41 @@ export const Giveaway = () => {
               </div>
             )}
           </div>
+          </>) : (
+            <div className="card" style={{ padding: 24, color: "var(--fg-2)" }}>
+              ยังไม่มี Giveaway — กด "สร้าง Giveaway" เพื่อเริ่มต้น
+            </div>
+          )}
         </div>
       </div>
 
-      {drawOpen && <DrawModal onClose={() => setDrawOpen(false)} />}
+      {createOpen && (
+        <CreateModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={async (g) => {
+            setCreateOpen(false);
+            setActionMsg({ kind: "ok", text: `สร้าง Giveaway "${g.title}" แล้ว (สถานะ DRAFT — กด Publish เพื่อโพสต์ใน Discord)` });
+            setSelectedId(g.id);
+            await reloadGiveaways();
+          }}
+        />
+      )}
+
+      {drawOpen && (
+        <DrawModal
+          giveaway={selected}
+          totalEntries={ENTRIES.length}
+          onClose={() => setDrawOpen(false)}
+          onDrawn={async () => {
+            setActionMsg({ kind: "ok", text: "สุ่มผู้โชคดีเรียบร้อย" });
+            await refresh();
+          }}
+          onAnnounce={async () => {
+            setDrawOpen(false);
+            await onAnnounce();
+          }}
+        />
+      )}
     </>
   );
 };
@@ -348,28 +424,126 @@ const CodeLine = ({ n, children }) => (
   </div>
 );
 
-const DrawModal = ({ onClose }) => {
-  const [phase, setPhase] = useState("ready");
-  const [name, setName] = useState(["—", "—"]);
-  const pool = ENTRIES.map((e) => [e[2], e[1]]);
+const CreateModal = ({ onClose, onCreated }) => {
+  const [title, setTitle] = useState("");
+  const [prize, setPrize] = useState("");
+  const [description, setDescription] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [requiredRoleId, setRequiredRoleId] = useState("");
+  const [minLevel, setMinLevel] = useState(0);
+  const [winnersCount, setWinnersCount] = useState(1);
+  const [endsAt, setEndsAt] = useState("");
+  const [coverFile, setCoverFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (phase !== "rolling") return;
-    let i = 0;
-    const id = setInterval(() => {
-      setName(pool[i % pool.length]);
-      i++;
-    }, 80);
-    const stop = setTimeout(() => {
-      clearInterval(id);
-      setName(["Kazuki Asahina", "kazuki_v"]);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !prize.trim() || !channelId.trim()) {
+      setError("กรอก Title, Prize และ Channel ID ให้ครบ");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const payload = {
+        channelId: channelId.trim(),
+        title: title.trim(),
+        prize: prize.trim(),
+        description: description.trim() || undefined,
+        requiredRoleId: requiredRoleId.trim() || null,
+        minLevel: Number(minLevel) || 0,
+        winnersCount: Number(winnersCount) || 1,
+        endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+      };
+      const created = await createGiveaway(payload, coverFile);
+      onCreated?.(created);
+    } catch (err) {
+      setError(err.message ?? "create_failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="draw-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="draw-head">
+          <h3><Icon name="plus" size={14} /> สร้าง Giveaway ใหม่</h3>
+          <button className="icon-btn" onClick={onClose}><Icon name="x" size={14} /></button>
+        </div>
+        <form onSubmit={submit} style={{ padding: 16, display: "grid", gap: 12 }}>
+          <div className="field">
+            <label>Title *</label>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Birthday Pack — REI" />
+          </div>
+          <div className="field">
+            <label>Prize *</label>
+            <input className="input" value={prize} onChange={(e) => setPrize(e.target.value)} placeholder="Limited Cheki Set ×3" />
+          </div>
+          <div className="field">
+            <label>Description</label>
+            <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="รายละเอียดของกิจกรรม" />
+          </div>
+          <div className="field">
+            <label>Channel ID * <span className="hint">(Discord channel ที่จะโพสต์)</span></label>
+            <input className="input" value={channelId} onChange={(e) => setChannelId(e.target.value)} placeholder="1234567890123456789" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="field">
+              <label>Required Role ID</label>
+              <input className="input" value={requiredRoleId} onChange={(e) => setRequiredRoleId(e.target.value)} placeholder="(ไม่บังคับ)" />
+            </div>
+            <div className="field">
+              <label>Min Level</label>
+              <input className="input" type="number" min="0" value={minLevel} onChange={(e) => setMinLevel(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Winners Count</label>
+              <input className="input" type="number" min="1" value={winnersCount} onChange={(e) => setWinnersCount(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Ends At</label>
+              <input className="input" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>Cover Image</label>
+            <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)} />
+          </div>
+          {error && <div style={{ color: "var(--red)", fontSize: 12 }}>{error}</div>}
+          <div className="draw-foot" style={{ paddingTop: 8 }}>
+            <button type="button" className="btn ghost" onClick={onClose} disabled={submitting}>ยกเลิก</button>
+            <button type="submit" className="btn primary" disabled={submitting}>
+              <Icon name="plus" size={12} /> {submitting ? "กำลังสร้าง…" : "สร้าง Giveaway"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const DrawModal = ({ giveaway, totalEntries, onClose, onDrawn, onAnnounce }) => {
+  const [phase, setPhase] = useState("ready");
+  const [winners, setWinners] = useState([]);
+  const [error, setError] = useState(null);
+
+  const roll = async () => {
+    if (!giveaway?.id) return;
+    setPhase("rolling");
+    setError(null);
+    try {
+      const res = await drawGiveaway(giveaway.id, giveaway.winnersCount ?? 1);
+      const list = Array.isArray(res?.winners) ? res.winners : [];
+      setWinners(list);
       setPhase("done");
-    }, 2400);
-    return () => {
-      clearInterval(id);
-      clearTimeout(stop);
-    };
-  }, [phase]);
+      onDrawn?.();
+    } catch (e) {
+      setError(e.message ?? "draw_failed");
+      setPhase("ready");
+    }
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -377,7 +551,7 @@ const DrawModal = ({ onClose }) => {
         <div className="draw-head">
           <h3>
             <Icon name="shuffle" size={14} /> สุ่มผู้โชคดี{" "}
-            <span className="tag-mono">gw_0042</span>
+            <span className="tag-mono">{giveaway?.id ?? "—"}</span>
           </h3>
           <button className="icon-btn" onClick={onClose}>
             <Icon name="x" size={14} />
@@ -386,21 +560,47 @@ const DrawModal = ({ onClose }) => {
         <div className={"draw-stage " + (phase === "rolling" ? "draw-rolling" : "")}>
           {phase === "ready" && (
             <div className="winner-card">
-              <div className="lab">พร้อมสุ่มจาก 284 รายชื่อ</div>
+              <div className="lab">พร้อมสุ่มจาก {totalEntries} รายชื่อ</div>
               <div className="who" style={{ fontSize: 22, color: "var(--fg-2)" }}>
                 กดปุ่ม Roll เพื่อเริ่ม
               </div>
-              <div className="why">รางวัล: Limited Cheki Set ×3 (3 ผู้โชคดี)</div>
+              <div className="why">
+                รางวัล: {giveaway?.prize ?? "—"} ({giveaway?.winnersCount ?? 1} ผู้โชคดี)
+              </div>
+              {error && (
+                <div style={{ marginTop: 12, color: "var(--red)", fontSize: 12 }}>
+                  {error}
+                </div>
+              )}
             </div>
           )}
-          {phase !== "ready" && (
+          {phase === "rolling" && (
             <div className="winner-card">
-              <div className="lab">{phase === "rolling" ? "กำลังสุ่ม…" : "★ ผู้โชคดี"}</div>
-              <div className="who">
-                <div className="av">{(name[1] || "??").slice(0, 2).toUpperCase()}</div>
-                <span>{name[0]}</span>
+              <div className="lab">กำลังสุ่ม…</div>
+              <div className="who" style={{ fontSize: 22, color: "var(--fg-2)" }}>
+                กำลังเลือกผู้โชคดี
               </div>
-              <div className="why">@{name[1]} · entry #001</div>
+            </div>
+          )}
+          {phase === "done" && (
+            <div className="winner-card">
+              <div className="lab">★ ผู้โชคดี ({winners.length})</div>
+              {winners.length === 0 ? (
+                <div className="who" style={{ fontSize: 16, color: "var(--fg-2)" }}>
+                  ไม่มีผู้โชคดี
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {winners.map((w) => (
+                    <div key={String(w.id)} className="who">
+                      <div className="av">
+                        {(w.displayName ?? w.handle ?? "??").slice(0, 2).toUpperCase()}
+                      </div>
+                      <span>{w.displayName ?? w.userId}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -409,19 +609,18 @@ const DrawModal = ({ onClose }) => {
             ปิด
           </button>
           {phase === "ready" && (
-            <button className="btn primary" onClick={() => setPhase("rolling")}>
+            <button
+              className="btn primary"
+              onClick={roll}
+              disabled={!giveaway?.id || totalEntries === 0}
+            >
               <Icon name="zap" size={12} /> Roll
             </button>
           )}
           {phase === "done" && (
-            <>
-              <button className="btn ghost" onClick={() => setPhase("rolling")}>
-                <Icon name="refresh" size={12} /> สุ่มใหม่
-              </button>
-              <button className="btn primary">
-                <Icon name="send" size={12} /> ประกาศใน Discord
-              </button>
-            </>
+            <button className="btn primary" onClick={onAnnounce}>
+              <Icon name="send" size={12} /> ประกาศใน Discord
+            </button>
           )}
         </div>
       </div>

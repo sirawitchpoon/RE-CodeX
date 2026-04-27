@@ -97,6 +97,25 @@ services:
     profiles: ["seed"]
     restart: "no"
 
+  # Run on demand: `docker compose run --rm seed-sample`. Inserts 3 sample
+  # giveaways (LIVE/SCHEDULED/ENDED) so the backoffice has data to render
+  # before real Discord activity flows in. Idempotent — clears `sample_*`
+  # rows first.
+  seed-sample:
+    build:
+      context: ../../
+      dockerfile: packages/db-app/Dockerfile
+    environment:
+      APP_DATABASE_URL: postgresql://${APP_DB_USER:-recodex_app}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME:-recodex_app}
+      GUILD_ID: ${GUILD_ID}
+    entrypoint: ["/sbin/tini","--"]
+    command: ["sh","-c","cd /app && npm --workspace @recodex/db-app run seed:sample"]
+    depends_on:
+      migrate-app:
+        condition: service_completed_successfully
+    profiles: ["seed"]
+    restart: "no"
+
   # ─── Application services ───────────────────────────────────────────────
   api:
     build:

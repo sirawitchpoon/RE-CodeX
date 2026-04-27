@@ -10,7 +10,8 @@
     "prisma:migrate": "prisma migrate deploy --schema=prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema=prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema=prisma/schema.prisma",
-    "seed:admin": "tsx prisma/seed-admin.ts"
+    "seed:admin": "tsx prisma/seed-admin.ts",
+    "seed:sample": "tsx prisma/seed-sample.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

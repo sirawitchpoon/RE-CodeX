@@ -22,7 +22,7 @@ const PAGES = {
   },
   members: {
     crumbs: ["RE:CodeX", "Overview", "Server Members"],
-    render: () => <Members />,
+    render: ({ navigate }) => <Members navigate={navigate} />,
   },
   logs: {
     crumbs: ["RE:CodeX", "Overview", "Logs / Activity"],
@@ -34,7 +34,7 @@ const PAGES = {
   },
   level: {
     crumbs: ["RE:CodeX", "Botstack", "Level — Leaderboard"],
-    render: () => <Leaderboard />,
+    render: ({ navigate }) => <Leaderboard navigate={navigate} />,
   },
   rules: {
     crumbs: ["RE:CodeX", "Botstack", "Level — XP Rules"],
@@ -42,7 +42,7 @@ const PAGES = {
   },
   profile: {
     crumbs: ["RE:CodeX", "Botstack", "Member Profile"],
-    render: () => <UserProfile />,
+    render: ({ params }) => <UserProfile userId={params?.userId} />,
   },
   moderation: {
     crumbs: ["RE:CodeX", "Botstack", "Moderation"],
@@ -91,8 +91,14 @@ const DEFAULT_TWEAKS = { theme: "dark", nav: "side", density: "comfy" };
 
 const App = () => {
   const [active, setActive] = useState("dashboard");
+  const [navParams, setNavParams] = useState({});
   const [tweaks, setTweaks] = useState(DEFAULT_TWEAKS);
   const [auth, setAuthState] = useState(() => getAuth());
+
+  const navigate = (target, params = {}) => {
+    setActive(target);
+    setNavParams(params);
+  };
 
   useEffect(() => {
     const html = document.documentElement;
@@ -120,8 +126,8 @@ const App = () => {
 
   return (
     <>
-      <AppShell active={active} crumbs={page.crumbs} onNavigate={setActive} user={auth?.user}>
-        {page.render()}
+      <AppShell active={active} crumbs={page.crumbs} onNavigate={navigate} user={auth?.user}>
+        {page.render({ navigate, params: navParams })}
       </AppShell>
       <TweaksPanel tweaks={tweaks} setTweak={setTweak} />
     </>

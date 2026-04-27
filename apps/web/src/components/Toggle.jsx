@@ -1,7 +1,13 @@
 import { useState } from "react";
 
-export const Toggle = ({ label, desc, defaultOn, val, range }) => {
-  const [on, setOn] = useState(!!defaultOn);
+export const Toggle = ({ label, desc, defaultOn, on: controlledOn, onChange, val, range }) => {
+  const [internalOn, setInternalOn] = useState(!!defaultOn);
+  const isControlled = controlledOn !== undefined;
+  const on = isControlled ? controlledOn : internalOn;
+  const handle = () => {
+    if (isControlled) onChange?.(!on);
+    else setInternalOn(!on);
+  };
   return (
     <div className="rule-block">
       <div className="rule-info">
@@ -31,7 +37,7 @@ export const Toggle = ({ label, desc, defaultOn, val, range }) => {
             {range}
           </span>
         )}
-        <span className={"toggle" + (on ? " on" : "")} onClick={() => setOn(!on)}>
+        <span className={"toggle" + (on ? " on" : "")} onClick={handle}>
           <span className="track" />
         </span>
       </div>
