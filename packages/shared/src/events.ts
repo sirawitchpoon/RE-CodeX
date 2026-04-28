@@ -5,6 +5,8 @@ export const CHANNELS = {
   GIVEAWAY_PUBLISH: "giveaway.publish",
   GIVEAWAY_ENTRY: "giveaway.entry",
   GIVEAWAY_ANNOUNCE: "giveaway.announce",
+  GIVEAWAY_EDIT: "giveaway.edit",
+  GIVEAWAY_CANCEL: "giveaway.cancel",
   LEVEL_UP: "level.up",
   LOG_APPEND: "log.append",
   BOT_HEARTBEAT: "bot.heartbeat",
@@ -29,6 +31,14 @@ export interface GiveawayEntryPayload {
 export interface GiveawayAnnouncePayload {
   giveawayId: string;
   winnerUserIds: string[];
+}
+
+export interface GiveawayEditPayload {
+  giveawayId: string;
+}
+
+export interface GiveawayCancelPayload {
+  giveawayId: string;
 }
 
 export interface LevelUpPayload {
@@ -68,6 +78,8 @@ export type EventPayloadMap = {
   [CHANNELS.GIVEAWAY_PUBLISH]: GiveawayPublishPayload;
   [CHANNELS.GIVEAWAY_ENTRY]: GiveawayEntryPayload;
   [CHANNELS.GIVEAWAY_ANNOUNCE]: GiveawayAnnouncePayload;
+  [CHANNELS.GIVEAWAY_EDIT]: GiveawayEditPayload;
+  [CHANNELS.GIVEAWAY_CANCEL]: GiveawayCancelPayload;
   [CHANNELS.LEVEL_UP]: LevelUpPayload;
   [CHANNELS.LOG_APPEND]: LogAppendPayload;
   [CHANNELS.BOT_HEARTBEAT]: BotHeartbeatPayload;

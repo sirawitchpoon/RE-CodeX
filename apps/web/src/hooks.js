@@ -55,12 +55,14 @@ function adaptGiveaway(g) {
     status: g.status,
     description: g.description ?? "",
     cover,
+    coverPath: g.coverPath ?? null,
     entries: g._count?.entries ?? 0,
     winners: g.winnersCount,
     winnersCount: g.winnersCount,
     ends: fmtEnds(g.endsAt),
-    role: g.requiredRoleId ? `<@&${g.requiredRoleId}>` : "—",
-    level: g.minLevel ?? 0,
+    endsAt: g.endsAt ?? null,
+    channelId: g.channelId ?? null,
+    channelName: g.channelName ?? null,
   };
 }
 
@@ -215,6 +217,18 @@ export async function createGiveaway(data, coverFile) {
   fd.append("data", JSON.stringify({ guildId: GUILD_ID, ...data }));
   if (coverFile) fd.append("cover", coverFile);
   return apiUpload(`/api/giveaways`, fd);
+}
+export async function updateGiveaway(id, data, coverFile) {
+  const fd = new FormData();
+  fd.append("data", JSON.stringify(data));
+  if (coverFile) fd.append("cover", coverFile);
+  return apiUpload(`/api/giveaways/${id}`, fd, "PATCH");
+}
+export async function endGiveaway(id) {
+  return api(`/api/giveaways/${id}/end`, { method: "POST" });
+}
+export async function cancelGiveaway(id) {
+  return api(`/api/giveaways/${id}/cancel`, { method: "POST" });
 }
 export async function saveLevelConfig(patch) {
   if (!GUILD_ID) throw new Error("missing_guild_id");

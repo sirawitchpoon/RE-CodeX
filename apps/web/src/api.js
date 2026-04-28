@@ -14,7 +14,9 @@ import { getToken, logout } from "./auth.js";
 export const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 export const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
 
-export const API_ENABLED = BASE.length > 0;
+// API is enabled whenever VITE_API_BASE is explicitly set (even if it's "/"
+// which strips to "" — that means same-origin and is still reachable).
+export const API_ENABLED = import.meta.env.VITE_API_BASE != null;
 
 function authHeaders(extra = {}) {
   const token = getToken();
@@ -48,10 +50,10 @@ export async function api(path, init = {}) {
 }
 
 /** multipart variant — pass a FormData. */
-export async function apiUpload(path, formData) {
+export async function apiUpload(path, formData, method = "POST") {
   if (!API_ENABLED) throw new Error("api_disabled");
   const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
+    method,
     body: formData,
     headers: authHeaders(),
   });

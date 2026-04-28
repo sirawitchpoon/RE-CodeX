@@ -25,8 +25,6 @@ export interface GiveawayForEmbed {
   prize: string;
   description: string | null;
   coverPath: string | null;
-  requiredRoleId: string | null;
-  minLevel: number;
   winnersCount: number;
   endsAt: Date | null;
 }
@@ -44,14 +42,9 @@ export async function buildGiveawayEmbed(
   const b = branding ?? DEFAULT_BRANDING;
   const color = parseAccentColor(b.accentColor);
 
-  const reqLines: string[] = [];
-  if (giveaway.requiredRoleId) reqLines.push(`Role: <@&${giveaway.requiredRoleId}>`);
-  if (giveaway.minLevel > 0) reqLines.push(`${b.xpLabel} Lv.${giveaway.minLevel}+`);
-  if (reqLines.length === 0) reqLines.push(renderLabel("Open to all {signals}", b));
-
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setAuthor({ name: `NEW GIVEAWAY · ${giveaway.id}` })
+    .setAuthor({ name: "NEW GIVEAWAY" })
     .setTitle(`${b.currencyEmoji} ${giveaway.title}`)
     .setDescription(
       [
@@ -75,7 +68,6 @@ export async function buildGiveawayEmbed(
           : "—",
         inline: true,
       },
-      { name: "Requirements", value: reqLines.join("\n"), inline: false },
     )
     .setFooter({ text: "Re:CodeX · Giveaway" })
     .setTimestamp();

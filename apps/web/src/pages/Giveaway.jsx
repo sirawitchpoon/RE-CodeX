@@ -1,16 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon, Sparkle } from "../components/Icon.jsx";
 import { PageHead } from "../components/PageHead.jsx";
-import { useGiveaways, useGiveawayEntries, publishGiveaway, drawGiveaway, announceGiveaway, createGiveaway } from "../hooks.js";
+import {
+  useGiveaways,
+  useGiveawayEntries,
+  publishGiveaway,
+  drawGiveaway,
+  announceGiveaway,
+  createGiveaway,
+  updateGiveaway,
+  endGiveaway,
+  cancelGiveaway,
+} from "../hooks.js";
 
 const STATUS_PILL = {
   LIVE: "live",
   SCHEDULED: "scheduled",
   ENDED: "offline",
+  DRAFT: "scheduled",
+  CANCELLED: "offline",
 };
 
 export const Giveaway = () => {
-  const { data: GIVEAWAYS, reload: reloadGiveaways } = useGiveaways();
+  const { data: ALL_GIVEAWAYS, reload: reloadGiveaways } = useGiveaways();
+  const [showCancelled, setShowCancelled] = useState(false);
+  const GIVEAWAYS = useMemo(
+    () =>
+      Array.isArray(ALL_GIVEAWAYS)
+        ? ALL_GIVEAWAYS.filter((g) => showCancelled || g.status !== "CANCELLED")
+        : [],
+    [ALL_GIVEAWAYS, showCancelled],
+  );
+  const cancelledCount = useMemo(
+    () =>
+      Array.isArray(ALL_GIVEAWAYS)
+        ? ALL_GIVEAWAYS.filter((g) => g.status === "CANCELLED").length
+        : 0,
+    [ALL_GIVEAWAYS],
+  );
   const [selectedId, setSelectedId] = useState(null);
   // First load: select the first LIVE one, else first row, else null
   useEffect(() => {
@@ -18,10 +45,19 @@ export const Giveaway = () => {
     const live = GIVEAWAYS.find((g) => g.status === "LIVE");
     setSelectedId((live ?? GIVEAWAYS[0]).id);
   }, [GIVEAWAYS, selectedId]);
+  // If filter hides the currently selected row, fall back to the first visible one
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!GIVEAWAYS.some((g) => g.id === selectedId)) {
+      setSelectedId(GIVEAWAYS[0]?.id ?? null);
+    }
+  }, [GIVEAWAYS, selectedId]);
   const selected = Array.isArray(GIVEAWAYS) ? GIVEAWAYS.find((g) => g.id === selectedId) : null;
   const { data: ENTRIES, reload: reloadEntries } = useGiveawayEntries(selectedId);
   const [drawOpen, setDrawOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); // "end" | "cancel" | null
   const [tab, setTab] = useState("entries");
   const [actionMsg, setActionMsg] = useState(null);
 
@@ -49,6 +85,30 @@ export const Giveaway = () => {
     }
   };
 
+  const onEnd = async () => {
+    if (!selectedId) return;
+    try {
+      await endGiveaway(selectedId);
+      setActionMsg({ kind: "ok", text: "ปิด Giveaway แล้ว" });
+      setConfirmAction(null);
+      await refresh();
+    } catch (e) {
+      setActionMsg({ kind: "err", text: `End ล้มเหลว: ${e.message}` });
+    }
+  };
+
+  const onCancel = async () => {
+    if (!selectedId) return;
+    try {
+      await cancelGiveaway(selectedId);
+      setActionMsg({ kind: "ok", text: "ยกเลิก Giveaway แล้ว — บอทอัปเดตข้อความใน Discord" });
+      setConfirmAction(null);
+      await refresh();
+    } catch (e) {
+      setActionMsg({ kind: "err", text: `Cancel ล้มเหลว: ${e.message}` });
+    }
+  };
+
   return (
     <>
       <PageHead
@@ -57,9 +117,19 @@ export const Giveaway = () => {
         desc="จัดการกิจกรรมแจกของรางวัล รวมรายชื่อผู้สมัครจาก modal และสุ่มผู้โชคดี"
         actions={
           <>
-            <button className="btn ghost">
-              <Icon name="calendar" size={13} /> History
-            </button>
+            <label
+              className="btn ghost"
+              style={{ cursor: "pointer", userSelect: "none" }}
+              title="แสดง Giveaway ที่ถูกยกเลิกในรายการ"
+            >
+              <input
+                type="checkbox"
+                checked={showCancelled}
+                onChange={(e) => setShowCancelled(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              แสดง CANCELLED{cancelledCount > 0 ? ` (${cancelledCount})` : ""}
+            </label>
             <button className="btn primary" onClick={() => setCreateOpen(true)}>
               <Icon name="plus" size={13} /> สร้าง Giveaway
             </button>
@@ -154,7 +224,7 @@ export const Giveaway = () => {
                     รางวัล: <strong style={{ color: "var(--fg-0)" }}>{selected.prize}</strong>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   {(selected.status === "DRAFT" || selected.status === "SCHEDULED") && (
                     <button className="btn primary btn-sm" onClick={onPublish}>
                       <Icon name="send" size={11} /> Publish
@@ -165,21 +235,54 @@ export const Giveaway = () => {
                       <Icon name="send" size={11} /> Announce winners
                     </button>
                   )}
-                  <button className="btn ghost btn-sm">
-                    <Icon name="edit" size={11} /> แก้ไข
-                  </button>
+                  {selected.status !== "ENDED" && selected.status !== "CANCELLED" && (
+                    <button
+                      className="btn ghost btn-sm"
+                      onClick={() => setEditOpen(true)}
+                      title="แก้ไขชื่อ / รางวัล / รูปปก / กำหนดเวลา"
+                    >
+                      <Icon name="edit" size={11} /> แก้ไข
+                    </button>
+                  )}
+                  {selected.status === "LIVE" && (
+                    <button
+                      className="btn ghost btn-sm"
+                      onClick={() => setConfirmAction("end")}
+                      title="ปิด Giveaway โดยไม่ประกาศผู้โชคดี"
+                    >
+                      <Icon name="x" size={11} /> End
+                    </button>
+                  )}
+                  {selected.status !== "CANCELLED" && selected.status !== "ENDED" && (
+                    <button
+                      className="btn ghost btn-sm"
+                      onClick={() => setConfirmAction("cancel")}
+                      style={{ color: "var(--red)" }}
+                      title="ยกเลิก Giveaway (เก็บประวัติเป็น CANCELLED)"
+                    >
+                      <Icon name="x" size={11} /> Cancel
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div className="meta-grid">
                 <MetaItem label="Status">
-                  <span className={"pill " + STATUS_PILL[selected.status]}>{selected.status}</span>
+                  <span className={"pill " + (STATUS_PILL[selected.status] ?? "offline")}>
+                    {selected.status}
+                  </span>
+                </MetaItem>
+                <MetaItem label="Channel">
+                  {selected.channelName
+                    ? `#${selected.channelName}`
+                    : selected.channelId
+                      ? <span className="mono dim">{selected.channelId}</span>
+                      : "—"}
                 </MetaItem>
                 <MetaItem label="Ends">{selected.ends}</MetaItem>
                 <MetaItem label="Total Entries">{selected.entries}</MetaItem>
                 <MetaItem label="Winners">{selected.winners} คน</MetaItem>
-                <MetaItem label="Required Role">{selected.role}</MetaItem>
-                <MetaItem label="Min Level">Lv.{selected.level}+</MetaItem>
+                <MetaItem label="ID"><span className="mono dim">{selected.id}</span></MetaItem>
               </div>
             </div>
           </div>
@@ -222,7 +325,7 @@ export const Giveaway = () => {
                   <button
                     className="btn primary btn-sm"
                     onClick={() => setDrawOpen(true)}
-                    disabled={!selected || selected.status === "ENDED"}
+                    disabled={!selected || selected.status === "ENDED" || selected.status === "CANCELLED"}
                   >
                     <Icon name="shuffle" size={11} /> สุ่มผู้โชคดี
                   </button>
@@ -344,22 +447,14 @@ export const Giveaway = () => {
                 style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
               >
                 <div className="field">
-                  <label>Required Role</label>
-                  <div className="input">@Stargazer</div>
-                  <div className="hint">เฉพาะคนที่มี role นี้เท่านั้นจะเข้าร่วมได้</div>
-                </div>
-                <div className="field">
-                  <label>Min Level</label>
-                  <div className="input">Lv.5</div>
-                  <div className="hint">ต้องมีระดับ XP จาก RX.Level อย่างน้อย</div>
-                </div>
-                <div className="field">
                   <label>One Entry Per</label>
                   <div className="input">User</div>
+                  <div className="hint">หนึ่งคนสมัครได้ครั้งเดียวต่อ Giveaway</div>
                 </div>
                 <div className="field">
-                  <label>Auto-draw</label>
-                  <div className="input">เปิดใช้งาน — สุ่มเมื่อหมดเวลา</div>
+                  <label>Requirements</label>
+                  <div className="input">Open to all — ไม่มีเงื่อนไข</div>
+                  <div className="hint">ทุกคนในเซิร์ฟเวอร์เข้าร่วมได้</div>
                 </div>
               </div>
             )}
@@ -399,6 +494,33 @@ export const Giveaway = () => {
           }}
         />
       )}
+
+      {editOpen && selected && (
+        <EditModal
+          giveaway={selected}
+          onClose={() => setEditOpen(false)}
+          onSaved={async () => {
+            setEditOpen(false);
+            setActionMsg({
+              kind: "ok",
+              text:
+                selected.status === "LIVE"
+                  ? "บันทึกแล้ว — บอทกำลังอัปเดตข้อความใน Discord"
+                  : "บันทึกแล้ว",
+            });
+            await refresh();
+          }}
+        />
+      )}
+
+      {confirmAction && selected && (
+        <ConfirmModal
+          kind={confirmAction}
+          giveaway={selected}
+          onClose={() => setConfirmAction(null)}
+          onConfirm={confirmAction === "end" ? onEnd : onCancel}
+        />
+      )}
     </>
   );
 };
@@ -429,8 +551,6 @@ const CreateModal = ({ onClose, onCreated }) => {
   const [prize, setPrize] = useState("");
   const [description, setDescription] = useState("");
   const [channelId, setChannelId] = useState("");
-  const [requiredRoleId, setRequiredRoleId] = useState("");
-  const [minLevel, setMinLevel] = useState(0);
   const [winnersCount, setWinnersCount] = useState(1);
   const [endsAt, setEndsAt] = useState("");
   const [coverFile, setCoverFile] = useState(null);
@@ -451,8 +571,6 @@ const CreateModal = ({ onClose, onCreated }) => {
         title: title.trim(),
         prize: prize.trim(),
         description: description.trim() || undefined,
-        requiredRoleId: requiredRoleId.trim() || null,
-        minLevel: Number(minLevel) || 0,
         winnersCount: Number(winnersCount) || 1,
         endsAt: endsAt ? new Date(endsAt).toISOString() : null,
       };
@@ -491,14 +609,6 @@ const CreateModal = ({ onClose, onCreated }) => {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div className="field">
-              <label>Required Role ID</label>
-              <input className="input" value={requiredRoleId} onChange={(e) => setRequiredRoleId(e.target.value)} placeholder="(ไม่บังคับ)" />
-            </div>
-            <div className="field">
-              <label>Min Level</label>
-              <input className="input" type="number" min="0" value={minLevel} onChange={(e) => setMinLevel(e.target.value)} />
-            </div>
-            <div className="field">
               <label>Winners Count</label>
               <input className="input" type="number" min="1" value={winnersCount} onChange={(e) => setWinnersCount(e.target.value)} />
             </div>
@@ -519,6 +629,155 @@ const CreateModal = ({ onClose, onCreated }) => {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+};
+
+// datetime-local needs "YYYY-MM-DDTHH:mm" — slice the ISO string in the user's
+// local zone, not UTC, so the displayed time matches the value the API stored.
+function toLocalInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const EditModal = ({ giveaway, onClose, onSaved }) => {
+  const [title, setTitle] = useState(giveaway.title ?? "");
+  const [prize, setPrize] = useState(giveaway.prize ?? "");
+  const [description, setDescription] = useState(giveaway.description ?? "");
+  const [winnersCount, setWinnersCount] = useState(giveaway.winnersCount ?? 1);
+  const [endsAt, setEndsAt] = useState(toLocalInput(giveaway.endsAt));
+  const [coverFile, setCoverFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !prize.trim()) {
+      setError("Title และ Prize ห้ามว่าง");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const payload = {
+        title: title.trim(),
+        prize: prize.trim(),
+        description: description.trim(),
+        winnersCount: Number(winnersCount) || 1,
+        endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+      };
+      await updateGiveaway(giveaway.id, payload, coverFile);
+      onSaved?.();
+    } catch (err) {
+      setError(err.message ?? "update_failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="draw-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="draw-head">
+          <h3><Icon name="edit" size={14} /> แก้ไข Giveaway</h3>
+          <button className="icon-btn" onClick={onClose}><Icon name="x" size={14} /></button>
+        </div>
+        <form onSubmit={submit} style={{ padding: 16, display: "grid", gap: 12 }}>
+          <div className="field">
+            <label>Title *</label>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Prize *</label>
+            <input className="input" value={prize} onChange={(e) => setPrize(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Description</label>
+            <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="field">
+              <label>Winners Count</label>
+              <input className="input" type="number" min="1" value={winnersCount} onChange={(e) => setWinnersCount(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Ends At</label>
+              <input className="input" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>Cover Image <span className="hint">(เว้นว่างเพื่อใช้รูปเดิม)</span></label>
+            <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)} />
+          </div>
+          {giveaway.status === "LIVE" && (
+            <div className="hint" style={{ color: "var(--fg-2)" }}>
+              Giveaway นี้ LIVE อยู่ — บอทจะแก้ไขข้อความใน Discord อัตโนมัติหลังบันทึก
+            </div>
+          )}
+          {error && <div style={{ color: "var(--red)", fontSize: 12 }}>{error}</div>}
+          <div className="draw-foot" style={{ paddingTop: 8 }}>
+            <button type="button" className="btn ghost" onClick={onClose} disabled={submitting}>ยกเลิก</button>
+            <button type="submit" className="btn primary" disabled={submitting}>
+              <Icon name="check" size={12} /> {submitting ? "กำลังบันทึก…" : "บันทึก"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmModal = ({ kind, giveaway, onClose, onConfirm }) => {
+  const [submitting, setSubmitting] = useState(false);
+  const isCancel = kind === "cancel";
+  const handle = async () => {
+    setSubmitting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="draw-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <div className="draw-head">
+          <h3>
+            <Icon name="x" size={14} />
+            {isCancel ? " ยกเลิก Giveaway" : " ปิด Giveaway"}
+          </h3>
+          <button className="icon-btn" onClick={onClose}><Icon name="x" size={14} /></button>
+        </div>
+        <div style={{ padding: 16, display: "grid", gap: 10, fontSize: 13 }}>
+          <div>
+            {isCancel ? (
+              <>
+                ยืนยันยกเลิก <strong>{giveaway.title}</strong> ?<br />
+                สถานะจะเปลี่ยนเป็น <span className="pill offline">CANCELLED</span> และบอทจะแก้ข้อความใน Discord เป็น "Giveaway นี้ถูกยกเลิกแล้ว"
+              </>
+            ) : (
+              <>
+                ปิด <strong>{giveaway.title}</strong> โดยไม่ประกาศผู้โชคดี?<br />
+                สถานะจะเปลี่ยนเป็น <span className="pill offline">ENDED</span> และปุ่มเข้าร่วมใน Discord จะถูกปิด
+              </>
+            )}
+          </div>
+        </div>
+        <div className="draw-foot">
+          <button className="btn ghost" onClick={onClose} disabled={submitting}>ยกเลิก</button>
+          <button
+            className="btn primary"
+            style={isCancel ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
+            onClick={handle}
+            disabled={submitting}
+          >
+            {submitting ? "กำลังดำเนินการ…" : isCancel ? "ยืนยันยกเลิก" : "ยืนยันปิด"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ enum GiveawayStatus {
   SCHEDULED
   LIVE
   ENDED
+  CANCELLED
 }
 
 enum GiveawayPlatform {
@@ -36,6 +37,7 @@ model Giveaway {
   id             String         @id @default(cuid())
   guildId        String         // soft FK → points-db Guild.id
   channelId      String
+  channelName    String?        // resolved by bot on publish — for UI display
   title          String
   prize          String
   description    String?

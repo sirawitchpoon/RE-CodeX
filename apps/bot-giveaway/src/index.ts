@@ -15,6 +15,8 @@ import { registerPublishHandler } from "./handlers/publish.js";
 import { registerButtonHandler } from "./handlers/button.js";
 import { registerModalHandler } from "./handlers/modal.js";
 import { registerAnnounceHandler } from "./handlers/announce.js";
+import { registerEditHandler } from "./handlers/edit.js";
+import { registerCancelHandler } from "./handlers/cancel.js";
 import { startHeartbeat, stopHeartbeat } from "./heartbeat.js";
 
 const client = new Client({
@@ -31,9 +33,16 @@ registerPublishHandler(client);
 registerButtonHandler(client);
 registerModalHandler(client);
 registerAnnounceHandler(client);
+registerEditHandler(client);
+registerCancelHandler(client);
 
 async function boot(): Promise<void> {
-  await sub.subscribe(CHANNELS.GIVEAWAY_PUBLISH, CHANNELS.GIVEAWAY_ANNOUNCE);
+  await sub.subscribe(
+    CHANNELS.GIVEAWAY_PUBLISH,
+    CHANNELS.GIVEAWAY_ANNOUNCE,
+    CHANNELS.GIVEAWAY_EDIT,
+    CHANNELS.GIVEAWAY_CANCEL,
+  );
   await client.login(env.GIVEAWAY_BOT_TOKEN);
 }
 

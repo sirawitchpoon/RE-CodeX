@@ -66,7 +66,7 @@ function serializable<T>(value: T): T {
 // ─── schemas ───────────────────────────────────────────────────────────────
 
 const platformEnum = z.enum(["TWITTER", "BLUESKY", "PIXIV"]);
-const statusEnum = z.enum(["DRAFT", "SCHEDULED", "LIVE", "ENDED"]);
+const statusEnum = z.enum(["DRAFT", "SCHEDULED", "LIVE", "ENDED", "CANCELLED"]);
 
 const createSchema = z.object({
   guildId: z.string().min(1),
@@ -219,6 +219,16 @@ giveawaysRouter.patch(
       },
     });
 
+    // If the live announcement exists, ask the bot to re-render the embed so
+    // edits to title/prize/description/cover/winners/ends are reflected in
+    // Discord. Edits to a non-LIVE giveaway are DB-only.
+    if (updated.status === "LIVE" && updated.messageId) {
+      await pub.publish(
+        CHANNELS.GIVEAWAY_EDIT,
+        encodeEvent(CHANNELS.GIVEAWAY_EDIT, { giveawayId: updated.id }),
+      );
+    }
+
     res.json(serializable(updated));
   },
 );
@@ -259,8 +269,8 @@ giveawaysRouter.post("/giveaways/:id/publish", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  if (giveaway.status === "ENDED") {
-    res.status(409).json({ error: "already_ended" });
+  if (giveaway.status === "ENDED" || giveaway.status === "CANCELLED") {
+    res.status(409).json({ error: "already_finalized" });
     return;
   }
 
@@ -320,6 +330,80 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
   });
 
   res.json(serializable({ winners: winnerRows }));
+});
+
+giveawaysRouter.post("/giveaways/:id/end", async (req, res) => {
+  const giveaway = await appPrisma.giveaway.findUnique({ where: { id: req.params.id } });
+  if (!giveaway) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (giveaway.status === "ENDED" || giveaway.status === "CANCELLED") {
+    res.status(409).json({ error: "already_finalized" });
+    return;
+  }
+
+  const updated = await appPrisma.giveaway.update({
+    where: { id: giveaway.id },
+    data: { status: "ENDED" },
+  });
+
+  if (updated.messageId) {
+    await pub.publish(
+      CHANNELS.GIVEAWAY_EDIT,
+      encodeEvent(CHANNELS.GIVEAWAY_EDIT, { giveawayId: updated.id }),
+    );
+  }
+
+  await appPrisma.log.create({
+    data: {
+      guildId: giveaway.guildId,
+      level: "EVENT",
+      source: "RX.Giveaway",
+      event: "giveaway.ended",
+      message: `Ended "${giveaway.title}" without announcing winners`,
+      meta: { giveawayId: giveaway.id },
+    },
+  });
+
+  res.json(serializable(updated));
+});
+
+giveawaysRouter.post("/giveaways/:id/cancel", async (req, res) => {
+  const giveaway = await appPrisma.giveaway.findUnique({ where: { id: req.params.id } });
+  if (!giveaway) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (giveaway.status === "CANCELLED") {
+    res.status(409).json({ error: "already_cancelled" });
+    return;
+  }
+
+  const updated = await appPrisma.giveaway.update({
+    where: { id: giveaway.id },
+    data: { status: "CANCELLED" },
+  });
+
+  if (updated.messageId) {
+    await pub.publish(
+      CHANNELS.GIVEAWAY_CANCEL,
+      encodeEvent(CHANNELS.GIVEAWAY_CANCEL, { giveawayId: updated.id }),
+    );
+  }
+
+  await appPrisma.log.create({
+    data: {
+      guildId: giveaway.guildId,
+      level: "EVENT",
+      source: "RX.Giveaway",
+      event: "giveaway.cancelled",
+      message: `Cancelled "${giveaway.title}"`,
+      meta: { giveawayId: giveaway.id },
+    },
+  });
+
+  res.json(serializable(updated));
 });
 
 giveawaysRouter.post("/giveaways/:id/announce", async (req, res) => {

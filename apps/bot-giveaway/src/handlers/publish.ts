@@ -57,7 +57,11 @@ async function handlePublish(client: Client, payload: GiveawayPublishPayload): P
 
   await appPrisma.giveaway.update({
     where: { id: giveaway.id },
-    data: { messageId: sent.id, channelId: ch.id },
+    data: {
+      messageId: sent.id,
+      channelId: ch.id,
+      channelName: (ch as TextChannel | NewsChannel).name,
+    },
   });
 
   await appPrisma.log.create({
