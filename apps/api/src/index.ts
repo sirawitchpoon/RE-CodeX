@@ -28,6 +28,8 @@ import { logsRouter } from "./routes/logs.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { authRouter } from "./routes/auth.js";
 import { membersRouter } from "./routes/members.js";
+import { syncRouter } from "./routes/sync.js";
+import { startSheetsWorker, stopSheetsWorker } from "./services/sheetsWorker.js";
 
 const app = express();
 
@@ -80,6 +82,7 @@ app.use("/api", eventsRouter);
 app.use("/api", giveawaysRouter);
 app.use("/api", levelsRouter);
 app.use("/api", membersRouter);
+app.use("/api", syncRouter);
 app.use("/api", leaderboardRouter);
 app.use("/api", usersRouter);
 app.use("/api", logsRouter);
@@ -119,6 +122,10 @@ startRedisFanout().catch((err) => {
   process.exit(1);
 });
 
+// Drains EntrySyncOutbox → Google Sheets. No-op when SHEETS_WEBHOOK_URL is
+// unset; safe to start unconditionally.
+startSheetsWorker();
+
 // ─── Shutdown ───────────────────────────────────────────────────────────────
 
 let shuttingDown = false;
@@ -129,6 +136,7 @@ async function shutdown(signal: string): Promise<void> {
 
   hub.stopHeartbeat();
   hub.closeAll();
+  stopSheetsWorker();
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
 

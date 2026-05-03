@@ -221,6 +221,29 @@ export function useGiveawayMembers() {
   return useApiOrFallback(path, []);
 }
 
+// ─── Sheets sync status ───────────────────────────────────────────────────
+// Polls every 15s — backlog state changes slowly; no need for SSE.
+export function useSheetsSyncStatus() {
+  const { data, reload } = useApiOrFallback(`/api/giveaway/sync-status`, {
+    enabled: false,
+    counts: { pending: 0, dead: 0, syncedLast24h: 0 },
+    recent: [],
+  });
+  useEffect(() => {
+    const t = setInterval(() => reload(), 15_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return data;
+}
+
+export async function retrySheetsSync(id) {
+  return api(`/api/giveaway/sync-status/retry`, {
+    method: "POST",
+    body: JSON.stringify(id ? { id } : {}),
+  });
+}
+
 // ─── Mutators ─────────────────────────────────────────────────────────────
 
 export async function createGiveaway(data, coverFile) {

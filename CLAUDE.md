@@ -115,8 +115,20 @@ Commit lives only in `pickmain.ts:commitEntry` — it does role swap (remove old
 
 ### Giveaway lifecycle guards (don't loosen these)
 
-- `POST /giveaways/:id/draw` runs `read existing winners → pick → mark` inside one Prisma `$transaction`. If winners already exist on a re-fire it returns the same set (idempotent) instead of pulling a second batch from the remaining pool. It also rejects when `status === "CANCELLED"`. **Don't move the existing-winner check outside the transaction** — two simultaneous calls would both pass it and double-draw.
+- `POST /giveaways/:id/draw` runs `read existing winners → pick → mark → enqueue WINNER_MARK outbox rows` inside one Prisma `$transaction`. If winners already exist on a re-fire it returns the same set (idempotent) instead of pulling a second batch from the remaining pool. It also rejects when `status === "CANCELLED"`. **Don't move the existing-winner check outside the transaction** — two simultaneous calls would both pass it and double-draw, and would also double-enqueue Sheets writes.
 - `DELETE /giveaways/:id` returns 409 `live_cannot_delete` when `status === "LIVE"` — its Discord embed is still in chat accepting button presses and the bot has no signal to clean it up. The admin must End or Cancel first; those flows publish `GIVEAWAY_EDIT` / `GIVEAWAY_CANCEL` so the bot updates the embed.
+
+### Google Sheets sync (outbox pattern)
+
+Every `GiveawayEntry` write (in `pickmain.ts:commitEntry`) and every winner mark (in `routes/giveaways.ts` draw handler) inserts an `EntrySyncOutbox` row in the **same `$transaction`** as the entry/winner change. A background worker in the API (`services/sheetsWorker.ts`, `setInterval` 10s) drains PENDING rows and POSTs to a Google Apps Script Web App that mirrors them into a Spreadsheet (1 tab per giveaway + a master `Winners` tab). Setup lives in `infra/sheets/` (`Code.gs` + `README.md`).
+
+Invariants:
+
+- The outbox insert **must** stay in the same transaction as the entry/winner write. If you split them, a process crash between the two leaves the source of truth (Postgres) holding a row that will never reach Sheets — the whole point of the outbox is "DB success ⇔ enqueue success."
+- Producers write the outbox; the **only** consumer is `sheetsWorker.ts`. Don't add another drainer or rows will be POSTed twice.
+- Apps Script dedupes by `outboxId` via `PropertiesService`, so retries from the worker are safe (at-least-once delivery → exactly-once landing).
+- The worker is opt-in: when `SHEETS_WEBHOOK_URL` or `SHEETS_WEBHOOK_TOKEN` is unset it stays asleep and outbox rows accumulate. They drain as soon as the env is configured — zero data loss during the gap.
+- Backoff schedule (10s → 1m → 5m → 15m → 30m → 1h → 2h → DEAD after 8 attempts) is in `BACKOFF_MS`. DEAD rows are visible at `GET /api/giveaway/sync-status` and re-queueable via `POST /api/giveaway/sync-status/retry` (also wired to the small status pill on the Giveaway backoffice page).
 
 ### Branding (`Signals` / `EXP` rename)
 

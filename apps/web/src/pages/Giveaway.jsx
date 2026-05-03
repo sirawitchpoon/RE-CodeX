@@ -5,6 +5,7 @@ import {
   useGiveaways,
   useGiveawayEntries,
   useGiveawayMembers,
+  useSheetsSyncStatus,
   publishGiveaway,
   drawGiveaway,
   announceGiveaway,
@@ -12,6 +13,7 @@ import {
   updateGiveaway,
   endGiveaway,
   cancelGiveaway,
+  retrySheetsSync,
 } from "../hooks.js";
 
 const STATUS_PILL = {
@@ -118,6 +120,7 @@ export const Giveaway = () => {
         desc="จัดการกิจกรรมแจกของรางวัล รวมรายชื่อผู้สมัครจาก modal และสุ่มผู้โชคดี"
         actions={
           <>
+            <SheetsSyncPill />
             <label
               className="btn ghost"
               style={{ cursor: "pointer", userSelect: "none" }}
@@ -921,5 +924,53 @@ const DrawModal = ({ giveaway, totalEntries, onClose, onDrawn, onAnnounce }) => 
         </div>
       </div>
     </div>
+  );
+};
+
+// Compact pill in the page actions row. Shows nothing when sync is healthy
+// (enabled, 0 pending, 0 dead) — surfaces only when the admin needs to act.
+const SheetsSyncPill = () => {
+  const status = useSheetsSyncStatus();
+  const [busy, setBusy] = useState(false);
+  if (!status) return null;
+  const { enabled, counts } = status;
+  const pending = counts?.pending ?? 0;
+  const dead = counts?.dead ?? 0;
+  // Healthy + enabled: stay quiet so the action bar isn't cluttered.
+  if (enabled && pending === 0 && dead === 0) return null;
+
+  const tone = !enabled ? "scheduled" : dead > 0 ? "offline" : "live";
+  const label = !enabled
+    ? "Sheets sync: ปิด"
+    : dead > 0
+      ? `Sheets sync: ${dead} ค้าง · ${pending} รอ`
+      : `Sheets sync: ${pending} กำลังส่ง`;
+
+  const onRetry = async () => {
+    if (busy || dead === 0) return;
+    setBusy(true);
+    try {
+      await retrySheetsSync();
+    } catch {
+      /* swallow — pill polls and refreshes on next tick */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span
+      className={"pill " + tone}
+      title={
+        !enabled
+          ? "ตั้ง SHEETS_WEBHOOK_URL + SHEETS_WEBHOOK_TOKEN ใน .env เพื่อเปิดการ sync"
+          : "ดูรายละเอียดที่ /api/giveaway/sync-status"
+      }
+      style={{ cursor: dead > 0 ? "pointer" : "default", userSelect: "none" }}
+      onClick={onRetry}
+    >
+      {label}
+      {dead > 0 ? (busy ? " · …" : " · กดเพื่อ retry") : ""}
+    </span>
   );
 };

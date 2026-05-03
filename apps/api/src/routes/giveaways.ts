@@ -337,7 +337,8 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
   // Idempotent draw: a second call with winners already persisted returns the
   // same set instead of pulling more entries on top. Run the read+pick+mark
   // inside one transaction so two simultaneous calls cannot both pass the
-  // "no winners yet" gate.
+  // "no winners yet" gate. We also enqueue WINNER_MARK outbox rows here so
+  // the Google Sheets winners tab is appended exactly once per draw.
   const winnerRows = await appPrisma.$transaction(async (tx) => {
     const existing = await tx.giveawayEntry.findMany({
       where: { giveawayId: giveaway.id, isWinner: true },
@@ -351,13 +352,38 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
     if (eligible.length === 0) return [];
 
     const picks = drawWinners(eligible, { n });
+    const pickIds = picks.map((w) => w.id);
     await tx.giveawayEntry.updateMany({
-      where: { id: { in: picks.map((w) => w.id) } },
+      where: { id: { in: pickIds } },
       data: { isWinner: true },
     });
-    return tx.giveawayEntry.findMany({
-      where: { id: { in: picks.map((w) => w.id) } },
+    const fresh = await tx.giveawayEntry.findMany({
+      where: { id: { in: pickIds } },
     });
+
+    // One outbox row per winner — enriched (member + user) is fetched
+    // outside this tx, so we stash the raw winner data here and the
+    // worker resolves names cross-DB at send time? No — we want the
+    // payload self-contained so the worker doesn't depend on points-db
+    // staying in sync. Cheaper: include the fields we already have and
+    // let the worker do a one-shot enrich before posting.
+    await tx.entrySyncOutbox.createMany({
+      data: fresh.map((w) => ({
+        type: "WINNER_MARK" as const,
+        payload: {
+          entryId: w.id.toString(),
+          giveawayId: giveaway.id,
+          giveawayTitle: giveaway.title,
+          userId: w.userId,
+          memberId: w.memberId,
+          contactType: w.contactType,
+          contactValue: w.contactValue,
+          drawnAt: new Date().toISOString(),
+        },
+      })),
+    });
+
+    return fresh;
   });
 
   if (winnerRows.length === 0) {

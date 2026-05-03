@@ -110,6 +110,39 @@ model BotInstance {
   eventCount    BigInt   @default(0)
 }
 
+// ─── Sheets sync outbox ───────────────────────────────────────────────────────
+// Durable queue for "this entry/winner needs to land in Google Sheets."
+// Producers (bot pickmain commit, API draw handler) insert rows inside the
+// SAME $transaction as the entry/winner write — so DB success = enqueue
+// success and we never miss an event. A worker in the API drains it in
+// background, posting to the Apps Script Web App with retries + backoff.
+
+enum OutboxType {
+  ENTRY_UPSERT     // a user joined or edited their entry
+  WINNER_MARK      // a user was drawn as a winner
+}
+
+enum OutboxStatus {
+  PENDING
+  SYNCED
+  DEAD             // permanent fail after max attempts — needs manual retry
+}
+
+model EntrySyncOutbox {
+  id            String       @id @default(cuid())
+  type          OutboxType
+  payload       Json         // self-contained snapshot — see services/sheetsWorker.ts
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  lastError     String?
+  nextAttemptAt DateTime     @default(now())
+  syncedAt      DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([createdAt])
+}
+
 // ─── Backoffice auth ──────────────────────────────────────────────────────────
 // Admin users for the SPA. Lives in app-db (not points-db) because admin
 // access lists are infrastructure / feature-adjacent — points-db stays

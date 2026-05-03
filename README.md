@@ -393,6 +393,23 @@ After `docker compose up -d` and the first `seed-admin` run:
     set**, not new picks. A `DELETE /api/giveaways/<id>` on a `LIVE`
     giveaway must return 409 `live_cannot_delete`; only `ENDED` /
     `CANCELLED` / `DRAFT` rows can be deleted.
+19. **Sheets sync drain.** Optional — only after deploying the Apps Script
+    per [`infra/sheets/README.md`](infra/sheets/README.md) and setting
+    `SHEETS_WEBHOOK_URL` + `SHEETS_WEBHOOK_TOKEN` in `.env`.
+    - Hit step 6 (one user joins) → within ~15s the user appears as a row
+      in the giveaway's tab in the Sheet (tab named `#<id> <title>`).
+    - Hit step 12 (draw + announce) → IsWinner flips to TRUE in that tab
+      AND a new row appears in the master `Winners` tab.
+    - Backlog should be 0:
+      ```bash
+      curl -s http://localhost:3000/api/giveaway/sync-status \
+        -H "Authorization: Bearer <admin-jwt>" | jq '.counts'
+      # → {"pending": 0, "dead": 0, "syncedLast24h": <n>}
+      ```
+    - Failure-mode check: temporarily change `SHEETS_WEBHOOK_TOKEN` in
+      `.env`, restart api, trigger an entry. Status pill on Giveaway page
+      should turn red within ~30s. Restore the correct token, restart api
+      → backlog drains automatically.
 
 ## Backups
 
