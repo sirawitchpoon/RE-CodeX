@@ -60,7 +60,7 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml \
   --profile seed run --rm seed-sample    # 3 sample giveaways for UI preview
 ```
 
-There is no test runner wired up — verify changes by running the smoke test in README.md (curl `/api/health`, exercise giveaway flow, post messages and check `/rank`).
+There is no test runner wired up — verify changes by running the **Smoke test** section in `README.md`. It walks 18 numbered steps: health + XP (1–4), giveaway end-to-end main-pick flow (5–12), live config / branding (13–15), and post-audit security checks (16–18: token redaction, per-IP lockout, draw idempotency). Run them top-to-bottom against a real Discord guild after `docker compose up -d --build` and the first `seed-admin`.
 
 ## Architecture
 
@@ -111,7 +111,12 @@ Commit lives only in `pickmain.ts:commitEntry` — it does role swap (remove old
 
 ### Giveaway draw / contact
 
-`GiveawayEntry` has `contactType ContactPreference` (DISCORD|OTHER) + nullable `contactValue`. Winners are drawn uniformly from one pool — `services/giveawayDraw.ts:drawWinners` (Fisher-Yates over `Math.random` — known issue, separate ticket). Member pick is fan-club flavor only; it does not affect draw odds. The announce handler mentions winners by `<@userId>`; the backoffice DrawModal additionally shows each winner's contact so the admin knows where to deliver the prize.
+`GiveawayEntry` has `contactType ContactPreference` (DISCORD|OTHER) + nullable `contactValue`. Winners are drawn uniformly from one pool — `services/giveawayDraw.ts:drawWinners` is a Fisher-Yates over `crypto.randomInt` (the `rng` option takes `maxExclusive` directly, no divide-then-floor; this dodges the modulo-bias the old `Math.random` version had and makes the result unpredictable to anyone observing the PRNG state). Member pick is fan-club flavor only; it does not affect draw odds. The announce handler mentions winners by `<@userId>`; the backoffice DrawModal additionally shows each winner's contact so the admin knows where to deliver the prize.
+
+### Giveaway lifecycle guards (don't loosen these)
+
+- `POST /giveaways/:id/draw` runs `read existing winners → pick → mark` inside one Prisma `$transaction`. If winners already exist on a re-fire it returns the same set (idempotent) instead of pulling a second batch from the remaining pool. It also rejects when `status === "CANCELLED"`. **Don't move the existing-winner check outside the transaction** — two simultaneous calls would both pass it and double-draw.
+- `DELETE /giveaways/:id` returns 409 `live_cannot_delete` when `status === "LIVE"` — its Discord embed is still in chat accepting button presses and the bot has no signal to clean it up. The admin must End or Cancel first; those flows publish `GIVEAWAY_EDIT` / `GIVEAWAY_CANCEL` so the bot updates the embed.
 
 ### Branding (`Signals` / `EXP` rename)
 
@@ -119,7 +124,22 @@ Labels are read from `BrandingConfig` per guild and rendered through `renderLabe
 
 ### Auth
 
-JWT (HS256, `JWT_SECRET`). Middleware: `apps/api/src/middleware/auth.ts`. `PUBLIC_PATHS` whitelist (`/health`, `/auth/login`) is the only bypass. SSE clients pass the token via `?token=` because EventSource can't set headers — the middleware checks both the `Authorization` header and the query param. Brute-force protection lives in `routes/auth.ts` (Redis SETEX counter, 5/15min lockout). The auth scheme is intentionally swappable: replace `signToken` / `jwt.verify` to move to Discord OAuth without touching route files.
+JWT (HS256, `JWT_SECRET`). Middleware: `apps/api/src/middleware/auth.ts`. `PUBLIC_PATHS` whitelist (`/health`, `/auth/login`) is the only bypass. SSE clients pass the token via `?token=` because EventSource can't set headers — the middleware checks both the `Authorization` header and the query param.
+
+Brute-force protection lives in `routes/auth.ts` and uses **two Redis SETEX buckets in parallel**:
+
+- `auth:fails:user:<lowercase-username>` — 5 fails / 15 min. Stops single-account brute force fast.
+- `auth:fails:ip:<req.ip>` — 20 fails / 15 min. Stops attackers who rotate usernames to dodge the user bucket; threshold is higher so a shared NAT egress (office, mobile carrier) doesn't lock out legit users when one teammate fat-fingers.
+
+Either bucket tripping responds 429. On success only the user bucket is cleared — keeping the IP counter prevents an attacker who happens to know one valid credential from resetting their per-IP score.
+
+Because the API runs behind Caddy, `apps/api/src/index.ts` calls `app.set("trust proxy", 1)` so `req.ip` reflects the real client. Don't drop that line or per-IP lockout breaks.
+
+`pinoHttp` redacts the JWT before it reaches access logs:
+- A custom `req` serializer rewrites `?token=…` in the URL to `?token=[REDACTED]`.
+- `redact: { paths: ['req.headers.authorization', 'req.headers.cookie'] }` censors the header form.
+
+The auth scheme is intentionally swappable: replace `signToken` / `jwt.verify` to move to Discord OAuth without touching route files.
 
 The frontend gates the entire SPA behind `<Login/>` whenever `API_ENABLED` (i.e. `VITE_API_BASE` set). Mock-only mode (no `VITE_API_BASE`) skips auth so the design preview works.
 

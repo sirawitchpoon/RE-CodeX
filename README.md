@@ -363,6 +363,37 @@ After `docker compose up -d` and the first `seed-admin` run:
     a fresh giveaway as a new user → picker shows the new label
     immediately (`MEMBERS_CHANGED` invalidates the cache).
 
+**Security hardening** (post-audit — verifies the fixes in `apps/api`)
+
+16. **Token redaction.** Hit any non-SSE endpoint with a fake token in the
+    query string, e.g.
+    `curl 'https://<domain>/api/health?token=secret-jwt-12345'`,
+    then `docker compose logs --tail=5 api` → the access-log line for that
+    request must show `url: /api/health?token=[REDACTED]` (never the raw
+    token). The `Authorization` and `Cookie` headers are redacted by the
+    same pinoHttp config.
+17. **Per-IP + per-user lockout.** Five wrong logins for one username from
+    the same IP must respond 401, and the sixth must respond 429
+    `too_many_attempts`:
+    ```bash
+    for i in 1 2 3 4 5 6; do
+      curl -s -o /dev/null -w "%{http_code}\n" \
+        -H 'Content-Type: application/json' \
+        -d '{"username":"smoketest","password":"wrong"}' \
+        https://<domain>/api/auth/login
+    done
+    # → 401 401 401 401 401 429
+    ```
+    Then `docker compose exec redis redis-cli KEYS 'auth:fails:*'` should
+    show **two** keys (`auth:fails:user:smoketest` + `auth:fails:ip:<ip>`).
+    Clean up with `redis-cli DEL` on those keys before the 15-minute window
+    expires, or wait it out.
+18. **Draw idempotency.** After step 12 (winners drawn + announced), POST
+    `/api/giveaways/<id>/draw` again — response must be the **same winner
+    set**, not new picks. A `DELETE /api/giveaways/<id>` on a `LIVE`
+    giveaway must return 409 `live_cannot_delete`; only `ENDED` /
+    `CANCELLED` / `DRAFT` rows can be deleted.
+
 ## Backups
 
 The two databases are backed up independently — the whole point of the
