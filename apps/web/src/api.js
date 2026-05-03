@@ -49,6 +49,39 @@ export async function api(path, init = {}) {
   return res.json();
 }
 
+/**
+ * Auth-aware file download. Hits an authenticated endpoint with the Bearer
+ * header, then triggers a browser download by creating a blob URL — the
+ * usual `<a download>` trick can't set headers, hence the manual fetch.
+ *
+ * The server's Content-Disposition is honored when present; otherwise we
+ * fall back to `fallbackName`.
+ */
+export async function apiDownload(path, fallbackName = "download.csv") {
+  if (!API_ENABLED) throw new Error("api_disabled");
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    handle401(res);
+    throw new Error(`api ${res.status}: ${res.statusText}`);
+  }
+  const blob = await res.blob();
+
+  // Pull filename from Content-Disposition if the server provided one.
+  let filename = fallbackName;
+  const cd = res.headers.get("content-disposition") ?? "";
+  const m = /filename="?([^"]+)"?/i.exec(cd);
+  if (m && m[1]) filename = m[1];
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** multipart variant — pass a FormData. */
 export async function apiUpload(path, formData, method = "POST") {
   if (!API_ENABLED) throw new Error("api_disabled");

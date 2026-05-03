@@ -292,53 +292,27 @@ async function commitEntry(
     update: { memberId: member.id },
   });
 
-  // 3. Insert / update the GiveawayEntry per mode + enqueue outbox row in
-  //    the SAME transaction. The outbox row is what the API's sheetsWorker
-  //    drains into Google Sheets. Doing both in one $transaction means
-  //    "entry persisted" ⇔ "sync queued" — nothing slips through if the
-  //    process dies mid-flow.
+  // 3. Insert / update the GiveawayEntry per mode.
   let entry;
   try {
-    entry = await appPrisma.$transaction(async (tx) => {
-      const row =
-        mode === "n"
-          ? await tx.giveawayEntry.create({
-              data: {
-                giveawayId: giveaway.id,
-                userId,
-                memberId: member.id,
-                contactType,
-                contactValue,
-              },
-            })
-          : await tx.giveawayEntry.update({
-              where: {
-                giveawayId_userId: { giveawayId: giveaway.id, userId },
-              },
-              data: { memberId: member.id, contactType, contactValue },
-            });
-
-      await tx.entrySyncOutbox.create({
+    if (mode === "n") {
+      entry = await appPrisma.giveawayEntry.create({
         data: {
-          type: "ENTRY_UPSERT",
-          payload: {
-            entryId: row.id.toString(),
-            giveawayId: giveaway.id,
-            giveawayTitle: giveaway.title,
-            userId,
-            memberId: member.id,
-            memberName: member.name,
-            contactType,
-            contactValue,
-            isWinner: row.isWinner,
-            createdAt: row.createdAt.toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
+          giveawayId: giveaway.id,
+          userId,
+          memberId: member.id,
+          contactType,
+          contactValue,
         },
       });
-
-      return row;
-    });
+    } else {
+      entry = await appPrisma.giveawayEntry.update({
+        where: {
+          giveawayId_userId: { giveawayId: giveaway.id, userId },
+        },
+        data: { memberId: member.id, contactType, contactValue },
+      });
+    }
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (mode === "n" && code === "P2002") {

@@ -66,6 +66,7 @@ model GiveawayEntry {
   contactType  ContactPreference @default(DISCORD)
   contactValue String?            // null when DISCORD; required string when OTHER
   isWinner     Boolean            @default(false)
+  drawnAt      DateTime?          // set in the same tx that flips isWinner=true; null until drawn
   createdAt    DateTime           @default(now())
 
   giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
@@ -108,39 +109,6 @@ model BotInstance {
   cpuPct        Float?
   memMb         Int?
   eventCount    BigInt   @default(0)
-}
-
-// ─── Sheets sync outbox ───────────────────────────────────────────────────────
-// Durable queue for "this entry/winner needs to land in Google Sheets."
-// Producers (bot pickmain commit, API draw handler) insert rows inside the
-// SAME $transaction as the entry/winner write — so DB success = enqueue
-// success and we never miss an event. A worker in the API drains it in
-// background, posting to the Apps Script Web App with retries + backoff.
-
-enum OutboxType {
-  ENTRY_UPSERT     // a user joined or edited their entry
-  WINNER_MARK      // a user was drawn as a winner
-}
-
-enum OutboxStatus {
-  PENDING
-  SYNCED
-  DEAD             // permanent fail after max attempts — needs manual retry
-}
-
-model EntrySyncOutbox {
-  id            String       @id @default(cuid())
-  type          OutboxType
-  payload       Json         // self-contained snapshot — see services/sheetsWorker.ts
-  status        OutboxStatus @default(PENDING)
-  attempts      Int          @default(0)
-  lastError     String?
-  nextAttemptAt DateTime     @default(now())
-  syncedAt      DateTime?
-  createdAt     DateTime     @default(now())
-
-  @@index([status, nextAttemptAt])
-  @@index([createdAt])
 }
 
 // ─── Backoffice auth ──────────────────────────────────────────────────────────

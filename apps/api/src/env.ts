@@ -22,12 +22,6 @@ const schema = z.object({
   // chars in production. Generate with: `openssl rand -hex 32`.
   JWT_SECRET: z.string().min(16),
   JWT_TTL_HOURS: z.coerce.number().int().positive().default(24),
-  // Google Apps Script Web App that mirrors entries + winners into a
-  // Spreadsheet. Both vars optional — when either is empty the sheets
-  // worker stays asleep and outbox rows just queue (zero data loss; the
-  // backlog drains as soon as the URL is configured).
-  SHEETS_WEBHOOK_URL: z.string().url().optional(),
-  SHEETS_WEBHOOK_TOKEN: z.string().min(8).optional(),
 });
 
 const parsed = schema.safeParse(process.env);

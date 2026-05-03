@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { GIVEAWAYS, ENTRIES, LB, LOGS, BOTS } from "./data.js";
-import { api, apiUpload, useApiOrFallback, useSSE, GUILD_ID, BASE } from "./api.js";
+import { api, apiUpload, apiDownload, useApiOrFallback, useSSE, GUILD_ID, BASE } from "./api.js";
 
 // ─── Giveaways ────────────────────────────────────────────────────────────
 
@@ -221,29 +221,6 @@ export function useGiveawayMembers() {
   return useApiOrFallback(path, []);
 }
 
-// ─── Sheets sync status ───────────────────────────────────────────────────
-// Polls every 15s — backlog state changes slowly; no need for SSE.
-export function useSheetsSyncStatus() {
-  const { data, reload } = useApiOrFallback(`/api/giveaway/sync-status`, {
-    enabled: false,
-    counts: { pending: 0, dead: 0, syncedLast24h: 0 },
-    recent: [],
-  });
-  useEffect(() => {
-    const t = setInterval(() => reload(), 15_000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return data;
-}
-
-export async function retrySheetsSync(id) {
-  return api(`/api/giveaway/sync-status/retry`, {
-    method: "POST",
-    body: JSON.stringify(id ? { id } : {}),
-  });
-}
-
 // ─── Mutators ─────────────────────────────────────────────────────────────
 
 export async function createGiveaway(data, coverFile) {
@@ -289,6 +266,15 @@ export async function drawGiveaway(id, n) {
 }
 export async function announceGiveaway(id) {
   return api(`/api/giveaways/${id}/announce`, { method: "POST" });
+}
+
+// CSV exports — browser downloads via blob URL (auth-aware, see api.js).
+export async function exportGiveawayEntriesCsv(id) {
+  return apiDownload(`/api/giveaways/${id}/entries.csv`, `giveaway-${id}.csv`);
+}
+export async function exportWinnersCsv() {
+  const q = GUILD_ID ? `?guildId=${encodeURIComponent(GUILD_ID)}` : "";
+  return apiDownload(`/api/giveaways-winners.csv${q}`, "winners.csv");
 }
 
 export async function createGwMember(data) {

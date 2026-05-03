@@ -8,7 +8,7 @@
 // the giveaway bot picks up the message. This keeps the API stateless w.r.t.
 // Discord credentials.
 
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -285,6 +285,168 @@ giveawaysRouter.get("/giveaways/:id/entries", async (req, res) => {
   res.json(serializable(enriched));
 });
 
+// ─── CSV exports ───────────────────────────────────────────────────────────
+//
+// Two endpoints, both meant to be downloaded straight from the backoffice:
+//
+//   GET /giveaways/:id/entries.csv     → one giveaway, all entries
+//   GET /giveaways/winners.csv?guildId → master winners across all giveaways
+//
+// Both write a UTF-8 BOM so Excel/Sheets opens the Thai characters in member
+// names without mojibake. Filenames include a sanitized title so the admin
+// can collect many CSVs without renaming.
+
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = typeof value === "string" ? value : String(value);
+  // RFC 4180: quote when value contains delimiter, quote, or newline; double
+  // existing quotes inside.
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function csvRow(values: unknown[]): string {
+  return values.map(csvEscape).join(",") + "\r\n";
+}
+
+function sanitizeFilename(s: string): string {
+  // Strip path separators + control chars; collapse whitespace; cap length.
+  return s
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function sendCsv(res: Response, filename: string, body: string): void {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  // BOM keeps Excel happy on UTF-8 (Thai member names + display names).
+  res.send("﻿" + body);
+}
+
+const ENTRY_HEADERS = [
+  "Timestamp",
+  "DiscordUserID",
+  "Username",
+  "DisplayName",
+  "Main",
+  "ContactType",
+  "ContactValue",
+  "IsWinner",
+  "DrawnAt",
+];
+
+const WINNER_HEADERS = [
+  "DrawTimestamp",
+  "GiveawayID",
+  "GiveawayTitle",
+  "DiscordUserID",
+  "Username",
+  "DisplayName",
+  "Main",
+  "ContactType",
+  "ContactValue",
+];
+
+giveawaysRouter.get("/giveaways/:id/entries.csv", async (req, res) => {
+  const giveaway = await appPrisma.giveaway.findUnique({ where: { id: req.params.id } });
+  if (!giveaway) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+
+  const entries = await appPrisma.giveawayEntry.findMany({
+    where: { giveawayId: giveaway.id },
+    orderBy: { createdAt: "asc" },
+  });
+  const memberIds = [...new Set(entries.map((e) => e.memberId))];
+  const userIds = [...new Set(entries.map((e) => e.userId))];
+  const [members, users] = await Promise.all([
+    memberIds.length > 0
+      ? pointsPrisma.giveawayMember.findMany({ where: { id: { in: memberIds } } })
+      : Promise.resolve([]),
+    userIds.length > 0
+      ? pointsPrisma.user.findMany({ where: { id: { in: userIds } } })
+      : Promise.resolve([]),
+  ]);
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  let body = csvRow(ENTRY_HEADERS);
+  for (const e of entries) {
+    const u = userMap.get(e.userId);
+    body += csvRow([
+      e.createdAt.toISOString(),
+      e.userId,
+      u?.username ?? "",
+      u?.displayName ?? u?.username ?? "",
+      memberMap.get(e.memberId)?.name ?? "",
+      e.contactType,
+      e.contactValue ?? "",
+      e.isWinner ? "TRUE" : "FALSE",
+      e.drawnAt ? e.drawnAt.toISOString() : "",
+    ]);
+  }
+
+  const slug = sanitizeFilename(giveaway.title) || giveaway.id;
+  sendCsv(res, `giveaway-${giveaway.id}-${slug}.csv`, body);
+});
+
+// NOTE: path intentionally NOT under `/giveaways/:id/...` — Express would
+// match `/giveaways/winners.csv` against the `/giveaways/:id` handler first
+// and 404 (treating "winners.csv" as the id).
+giveawaysRouter.get("/giveaways-winners.csv", async (req, res) => {
+  const guildId = typeof req.query.guildId === "string" ? req.query.guildId : null;
+  const giveaways = await appPrisma.giveaway.findMany({
+    where: guildId ? { guildId } : undefined,
+    select: { id: true, title: true },
+  });
+  const giveawayMap = new Map(giveaways.map((g) => [g.id, g.title]));
+
+  const winners = await appPrisma.giveawayEntry.findMany({
+    where: {
+      isWinner: true,
+      ...(guildId ? { giveaway: { guildId } } : {}),
+    },
+    orderBy: { drawnAt: "asc" },
+  });
+
+  const memberIds = [...new Set(winners.map((w) => w.memberId))];
+  const userIds = [...new Set(winners.map((w) => w.userId))];
+  const [members, users] = await Promise.all([
+    memberIds.length > 0
+      ? pointsPrisma.giveawayMember.findMany({ where: { id: { in: memberIds } } })
+      : Promise.resolve([]),
+    userIds.length > 0
+      ? pointsPrisma.user.findMany({ where: { id: { in: userIds } } })
+      : Promise.resolve([]),
+  ]);
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  let body = csvRow(WINNER_HEADERS);
+  for (const w of winners) {
+    const u = userMap.get(w.userId);
+    body += csvRow([
+      // Fall back to createdAt for legacy winners drawn before drawnAt was
+      // introduced — they'll show the entry creation time instead of null.
+      (w.drawnAt ?? w.createdAt).toISOString(),
+      w.giveawayId,
+      giveawayMap.get(w.giveawayId) ?? "",
+      w.userId,
+      u?.username ?? "",
+      u?.displayName ?? u?.username ?? "",
+      memberMap.get(w.memberId)?.name ?? "",
+      w.contactType,
+      w.contactValue ?? "",
+    ]);
+  }
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  sendCsv(res, `winners-${stamp}.csv`, body);
+});
+
 giveawaysRouter.post("/giveaways/:id/publish", async (req, res) => {
   const giveaway = await appPrisma.giveaway.findUnique({ where: { id: req.params.id } });
   if (!giveaway) {
@@ -337,8 +499,7 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
   // Idempotent draw: a second call with winners already persisted returns the
   // same set instead of pulling more entries on top. Run the read+pick+mark
   // inside one transaction so two simultaneous calls cannot both pass the
-  // "no winners yet" gate. We also enqueue WINNER_MARK outbox rows here so
-  // the Google Sheets winners tab is appended exactly once per draw.
+  // "no winners yet" gate.
   const winnerRows = await appPrisma.$transaction(async (tx) => {
     const existing = await tx.giveawayEntry.findMany({
       where: { giveawayId: giveaway.id, isWinner: true },
@@ -355,35 +516,11 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
     const pickIds = picks.map((w) => w.id);
     await tx.giveawayEntry.updateMany({
       where: { id: { in: pickIds } },
-      data: { isWinner: true },
+      data: { isWinner: true, drawnAt: new Date() },
     });
-    const fresh = await tx.giveawayEntry.findMany({
+    return tx.giveawayEntry.findMany({
       where: { id: { in: pickIds } },
     });
-
-    // One outbox row per winner — enriched (member + user) is fetched
-    // outside this tx, so we stash the raw winner data here and the
-    // worker resolves names cross-DB at send time? No — we want the
-    // payload self-contained so the worker doesn't depend on points-db
-    // staying in sync. Cheaper: include the fields we already have and
-    // let the worker do a one-shot enrich before posting.
-    await tx.entrySyncOutbox.createMany({
-      data: fresh.map((w) => ({
-        type: "WINNER_MARK" as const,
-        payload: {
-          entryId: w.id.toString(),
-          giveawayId: giveaway.id,
-          giveawayTitle: giveaway.title,
-          userId: w.userId,
-          memberId: w.memberId,
-          contactType: w.contactType,
-          contactValue: w.contactValue,
-          drawnAt: new Date().toISOString(),
-        },
-      })),
-    });
-
-    return fresh;
   });
 
   if (winnerRows.length === 0) {

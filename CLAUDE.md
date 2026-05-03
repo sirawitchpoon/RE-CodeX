@@ -118,17 +118,18 @@ Commit lives only in `pickmain.ts:commitEntry` — it does role swap (remove old
 - `POST /giveaways/:id/draw` runs `read existing winners → pick → mark → enqueue WINNER_MARK outbox rows` inside one Prisma `$transaction`. If winners already exist on a re-fire it returns the same set (idempotent) instead of pulling a second batch from the remaining pool. It also rejects when `status === "CANCELLED"`. **Don't move the existing-winner check outside the transaction** — two simultaneous calls would both pass it and double-draw, and would also double-enqueue Sheets writes.
 - `DELETE /giveaways/:id` returns 409 `live_cannot_delete` when `status === "LIVE"` — its Discord embed is still in chat accepting button presses and the bot has no signal to clean it up. The admin must End or Cancel first; those flows publish `GIVEAWAY_EDIT` / `GIVEAWAY_CANCEL` so the bot updates the embed.
 
-### Google Sheets sync (outbox pattern)
+### CSV export (offline mirror of entries + winners)
 
-Every `GiveawayEntry` write (in `pickmain.ts:commitEntry`) and every winner mark (in `routes/giveaways.ts` draw handler) inserts an `EntrySyncOutbox` row in the **same `$transaction`** as the entry/winner change. A background worker in the API (`services/sheetsWorker.ts`, `setInterval` 10s) drains PENDING rows and POSTs to a Google Apps Script Web App that mirrors them into a Spreadsheet (1 tab per giveaway + a master `Winners` tab). Setup lives in `infra/sheets/` (`Code.gs` + `README.md`).
+Two endpoints on `routes/giveaways.ts`:
 
-Invariants:
+- `GET /api/giveaways/:id/entries.csv` — all entries of one giveaway, columns: `Timestamp, DiscordUserID, Username, DisplayName, Main, ContactType, ContactValue, IsWinner, DrawnAt`.
+- `GET /api/giveaways-winners.csv?guildId=<g>` — every winner across the guild, columns: `DrawTimestamp, GiveawayID, GiveawayTitle, DiscordUserID, Username, DisplayName, Main, ContactType, ContactValue`. Path lives outside the `/giveaways/:id` namespace on purpose — `/giveaways/winners.csv` would be swallowed by the `:id` handler.
 
-- The outbox insert **must** stay in the same transaction as the entry/winner write. If you split them, a process crash between the two leaves the source of truth (Postgres) holding a row that will never reach Sheets — the whole point of the outbox is "DB success ⇔ enqueue success."
-- Producers write the outbox; the **only** consumer is `sheetsWorker.ts`. Don't add another drainer or rows will be POSTed twice.
-- Apps Script dedupes by `outboxId` via `PropertiesService`, so retries from the worker are safe (at-least-once delivery → exactly-once landing).
-- The worker is opt-in: when `SHEETS_WEBHOOK_URL` or `SHEETS_WEBHOOK_TOKEN` is unset it stays asleep and outbox rows accumulate. They drain as soon as the env is configured — zero data loss during the gap.
-- Backoff schedule (10s → 1m → 5m → 15m → 30m → 1h → 2h → DEAD after 8 attempts) is in `BACKOFF_MS`. DEAD rows are visible at `GET /api/giveaway/sync-status` and re-queueable via `POST /api/giveaway/sync-status/retry` (also wired to the small status pill on the Giveaway backoffice page).
+Both are auth-protected (admin JWT, like the rest of `/api`) and wired to the **Export CSV** + **Winners (รวม)** buttons in the Giveaway page toolbar via `apiDownload` in `apps/web/src/api.js` (auth-aware fetch → blob → `<a download>` click). UTF-8 BOM is prepended so Excel/Sheets opens Thai member names without mojibake; CSV escaping is RFC 4180 (quote when value contains `,"\r\n`, double internal quotes).
+
+`GiveawayEntry.drawnAt DateTime?` is set in the same `$transaction` that flips `isWinner=true`, so the master winners CSV has accurate per-row draw timestamps. Entries that pre-date this field fall back to `createdAt` in the CSV — the column never reads null.
+
+There is intentionally **no** automatic external mirror (Google Sheets, etc.) — the durability story is "Postgres is the source of truth + admin downloads CSV on demand." Anyone who wants a Sheet just imports the CSV.
 
 ### Branding (`Signals` / `EXP` rename)
 
