@@ -61,8 +61,8 @@ async function handleEdit(client: Client, payload: GiveawayEditPayload): Promise
 
   const built = await buildGiveawayEmbed(giveaway, branding);
 
-  // If the giveaway is no longer LIVE (ended), disable the join button so
-  // people can still see the post but can't enter.
+  // If the giveaway is no longer LIVE (ended), disable both buttons so
+  // people can still see the post but can't interact.
   const components =
     giveaway.status === "LIVE"
       ? built.components
@@ -70,7 +70,12 @@ async function handleEdit(client: Client, payload: GiveawayEditPayload): Promise
           new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
               .setCustomId(`gw:join:${giveaway.id}`)
-              .setLabel(giveaway.status === "ENDED" ? "Giveaway สิ้นสุดแล้ว" : "เข้าร่วม Giveaway")
+              .setLabel(giveaway.status === "ENDED" ? "Giveaway สิ้นสุดแล้ว" : "เข้าร่วม")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+            new ButtonBuilder()
+              .setCustomId(`gw:edit:${giveaway.id}`)
+              .setLabel("แก้ไขข้อมูล")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(true),
           ),

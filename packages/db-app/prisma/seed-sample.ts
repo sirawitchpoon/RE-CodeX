@@ -1,5 +1,8 @@
-// One-shot CLI: insert sample giveaways + entries so the backoffice has
-// something to render before real Discord activity flows in.
+// One-shot CLI: insert sample giveaways so the backoffice has something to
+// render before real Discord activity flows in. Entries are no longer seeded
+// here because GiveawayEntry now soft-FKs into points-db.GiveawayMember,
+// which the admin populates via the Giveaway → Members admin page. Run the
+// real flow in Discord (or write a custom seeder) to get sample entries.
 //
 // Usage (host shell, from repo root):
 //   GUILD_ID=<your-guild-id> \
@@ -7,7 +10,7 @@
 //
 // Idempotent: clears `sample_*` giveaways before inserting fresh ones.
 
-import { PrismaClient, GiveawayPlatform, GiveawayStatus } from "../src/_prisma/index.js";
+import { PrismaClient, GiveawayStatus } from "../src/_prisma/index.js";
 
 const prisma = new PrismaClient();
 
@@ -16,21 +19,11 @@ const SAMPLES = [
     id: "sample_live",
     title: "Birthday Pack — REI",
     prize: "Limited Cheki Set ×3",
-    description: "ฉลองวันเกิด REI · กรอก modal เพื่อเข้าร่วม",
+    description: "ฉลองวันเกิด REI · กดปุ่มเข้าร่วมแล้วเลือกเมน",
     status: "LIVE" as GiveawayStatus,
     minLevel: 5,
     winnersCount: 3,
     endsInDays: 2,
-    entries: [
-      ["100000000000000001", "kazuki_v",   "Kazuki Asahina", "TWITTER" as GiveawayPlatform],
-      ["100000000000000002", "hibiki_92",  "Hibiki",          "TWITTER" as GiveawayPlatform],
-      ["100000000000000003", "aoi_v",      "Aoi Mitsurugi",  "BLUESKY" as GiveawayPlatform],
-      ["100000000000000004", "ren_codex",  "Ren",             "TWITTER" as GiveawayPlatform],
-      ["100000000000000005", "suki_dev",   "Suki",            "TWITTER" as GiveawayPlatform],
-      ["100000000000000006", "yumeno_x",   "Yumeno",          "TWITTER" as GiveawayPlatform],
-      ["100000000000000007", "shiki_fan",  "Shiki",           "BLUESKY" as GiveawayPlatform],
-      ["100000000000000008", "code_mochi", "Mochi",           "TWITTER" as GiveawayPlatform],
-    ],
   },
   {
     id: "sample_scheduled",
@@ -41,7 +34,6 @@ const SAMPLES = [
     minLevel: 10,
     winnersCount: 5,
     endsInDays: 7,
-    entries: [],
   },
   {
     id: "sample_ended",
@@ -52,7 +44,6 @@ const SAMPLES = [
     minLevel: 1,
     winnersCount: 10,
     endsInDays: -3,
-    entries: [],
   },
 ];
 
@@ -82,19 +73,7 @@ async function main() {
       },
     });
 
-    for (const [userId, handle, displayName, platform] of s.entries) {
-      await prisma.giveawayEntry.create({
-        data: {
-          giveawayId: s.id,
-          userId,
-          displayName,
-          handle,
-          platform,
-        },
-      });
-    }
-
-    console.log(`[seed-sample] ${s.id} (${s.status}) — ${s.entries.length} entries`);
+    console.log(`[seed-sample] ${s.id} (${s.status})`);
   }
 }
 

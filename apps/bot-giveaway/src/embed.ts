@@ -52,7 +52,7 @@ export async function buildGiveawayEmbed(
         giveaway.description ?? "",
         "",
         renderLabel(
-          "กดปุ่ม **เข้าร่วม Giveaway** ด้านล่างแล้วกรอกข้อมูลใน modal — โชคดี {signals}!",
+          "กด **เข้าร่วม** เพื่อเลือกเมน · กด **แก้ไขข้อมูล** เพื่อเปลี่ยนเมน/ช่องทางติดต่อ — โชคดี {signals}!",
           b,
         ),
       ]
@@ -89,9 +89,13 @@ export async function buildGiveawayEmbed(
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`gw:join:${giveaway.id}`)
-      .setLabel("เข้าร่วม Giveaway")
+      .setLabel("เข้าร่วม")
       .setStyle(ButtonStyle.Primary)
       .setEmoji(b.currencyEmoji),
+    new ButtonBuilder()
+      .setCustomId(`gw:edit:${giveaway.id}`)
+      .setLabel("แก้ไขข้อมูล")
+      .setStyle(ButtonStyle.Secondary),
   );
 
   return { embed, components: [row], files };

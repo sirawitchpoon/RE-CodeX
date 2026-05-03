@@ -137,19 +137,17 @@ export const GIVEAWAYS = [
   },
 ];
 
+// Mocked entries match the API shape post cross-DB join (member + user).
+// adaptEntry() in hooks.js maps these to the row shape Giveaway.jsx renders.
 export const ENTRIES = [
-  ["#001", "kazuki_v",   "Kazuki Asahina", "Twitter", "@kazuki_v",   "Lv.42", "Stargazer", "14:31:22", true],
-  ["#002", "hibiki_92",  "Hibiki",         "Twitter", "@hibiki_92",  "Lv.28", "Stargazer", "14:30:08", false],
-  ["#003", "aoi_v",      "Aoi Mitsurugi",  "Bluesky", "@aoi.bsky",   "Lv.24", "Member",    "14:28:55", true],
-  ["#004", "ren_codex",  "Ren",            "Twitter", "@ren_codex",  "Lv.19", "Stargazer", "14:25:11", false],
-  ["#005", "suki_dev",   "Suki",           "Twitter", "@sukidev",    "Lv.36", "Stargazer", "14:21:02", false],
-  ["#006", "yumeno_x",   "Yumeno",         "Twitter", "@yumeno_x",   "Lv.12", "Member",    "14:18:44", false],
-  ["#007", "shiki_fan",  "Shiki",          "Bluesky", "@shiki.fan",  "Lv.8",  "Member",    "14:15:31", false],
-  ["#008", "code_mochi", "Mochi",          "Twitter", "@code.mochi", "Lv.31", "Stargazer", "14:11:08", true],
-  ["#009", "tsubasa_re", "Tsubasa",        "Twitter", "@tsubasa_re", "Lv.22", "Stargazer", "14:08:55", false],
-  ["#010", "noah_rcx",   "Noah",           "Pixiv",   "@noah_rcx",   "Lv.16", "Member",    "14:04:12", false],
-  ["#011", "lumi_oshi",  "Lumi",           "Twitter", "@lumi_oshi",  "Lv.45", "Stargazer", "14:01:01", false],
-  ["#012", "haru_codex", "Haru",           "Bluesky", "@haru.codex", "Lv.30", "Stargazer", "13:58:42", false],
+  { userId: "100000000000000001", memberId: "m_al",     contactType: "DISCORD", contactValue: null,                isWinner: true,  createdAt: "2026-04-28T14:31:22Z", user: { id: "100000000000000001", username: "kazuki_v",   displayName: "Kazuki Asahina" }, member: { id: "m_al",     name: "AL",     accentColor: "#c77dff", emoji: "💎" } },
+  { userId: "100000000000000002", memberId: "m_zerozu", contactType: "DISCORD", contactValue: null,                isWinner: false, createdAt: "2026-04-28T14:30:08Z", user: { id: "100000000000000002", username: "hibiki_92",  displayName: "Hibiki" },          member: { id: "m_zerozu", name: "Zerozu", accentColor: "#7ae0ff", emoji: "🔷" } },
+  { userId: "100000000000000003", memberId: "m_wataru", contactType: "OTHER",   contactValue: "@aoi.bsky (Bluesky)", isWinner: true,  createdAt: "2026-04-28T14:28:55Z", user: { id: "100000000000000003", username: "aoi_v",      displayName: "Aoi Mitsurugi" },   member: { id: "m_wataru", name: "Wataru", accentColor: "#6fe39a", emoji: "🌿" } },
+  { userId: "100000000000000004", memberId: "m_rei",    contactType: "DISCORD", contactValue: null,                isWinner: false, createdAt: "2026-04-28T14:25:11Z", user: { id: "100000000000000004", username: "ren_codex",  displayName: "Ren" },             member: { id: "m_rei",    name: "Rei",    accentColor: "#ff6b8a", emoji: "🌸" } },
+  { userId: "100000000000000005", memberId: "m_baobei", contactType: "OTHER",   contactValue: "@sukidev (Twitter)",  isWinner: false, createdAt: "2026-04-28T14:21:02Z", user: { id: "100000000000000005", username: "suki_dev",   displayName: "Suki" },            member: { id: "m_baobei", name: "Baobei", accentColor: "#ffc266", emoji: "🍯" } },
+  { userId: "100000000000000006", memberId: "m_iw",     contactType: "DISCORD", contactValue: null,                isWinner: false, createdAt: "2026-04-28T14:18:44Z", user: { id: "100000000000000006", username: "yumeno_x",   displayName: "Yumeno" },          member: { id: "m_iw",     name: "Iw",     accentColor: "#a3a3ff", emoji: "❄️" } },
+  { userId: "100000000000000007", memberId: "m_al",     contactType: "DISCORD", contactValue: null,                isWinner: false, createdAt: "2026-04-28T14:15:31Z", user: { id: "100000000000000007", username: "shiki_fan",  displayName: "Shiki" },           member: { id: "m_al",     name: "AL",     accentColor: "#c77dff", emoji: "💎" } },
+  { userId: "100000000000000008", memberId: "m_zerozu", contactType: "DISCORD", contactValue: null,                isWinner: true,  createdAt: "2026-04-28T14:11:08Z", user: { id: "100000000000000008", username: "code_mochi", displayName: "Mochi" },           member: { id: "m_zerozu", name: "Zerozu", accentColor: "#7ae0ff", emoji: "🔷" } },
 ];
 
 export const LB = [
@@ -182,15 +180,15 @@ export const MEMBERS = [
 
 export const LOGS = [
   ["14:32:08", "INFO",  "RX.Level",      "xp.granted",    "user_id=384207192749211648 amount=12 channel=#general-chat reason=text"],
-  ["14:31:52", "INFO",  "RX.Giveaway",   "entry.created", 'campaign=gw_0042 user=@hibiki_92 platform="Twitter" handle="@hibiki_92"'],
+  ["14:31:52", "INFO",  "RX.Giveaway",   "entry.created", 'campaign=gw_0042 user=@hibiki_92 main="Zerozu" contact="Discord"'],
   ["14:30:14", "EVENT", "RX.Level",      "level.up",      "user=@aoi_v from=23 to=24 xp_total=122110"],
   ["14:28:42", "INFO",  "RX.Welcome",    "welcome.sent",  "user=@new_listener_42 channel=#welcome message_id=1245..."],
   ["14:27:01", "WARN",  "RX.Moderation", "automod.flag",  'channel=#general-chat rule=link-spam matches=3 action="auto-delete"'],
   ["14:24:18", "INFO",  "RX.Giveaway",   "draw.executed", 'campaign=gw_0041 winners=["@suki_dev"] count=1'],
   ["14:22:55", "INFO",  "RX.Level",      "xp.granted",    "user=@ren_codex amount=8 channel=#karaoke-stage reason=voice"],
   ["14:20:11", "ERROR", "RX.Music",      "queue.fail",    'reason="ratelimit" provider="youtube" retry_after=12s'],
-  ["14:18:44", "INFO",  "RX.Giveaway",   "entry.created", 'campaign=gw_0042 user=@yumeno_x platform="Twitter"'],
-  ["14:15:31", "INFO",  "RX.Giveaway",   "entry.created", 'campaign=gw_0042 user=@shiki_fan platform="Bluesky"'],
+  ["14:18:44", "INFO",  "RX.Giveaway",   "entry.created", 'campaign=gw_0042 user=@yumeno_x main="Iw" contact="Discord"'],
+  ["14:15:31", "INFO",  "RX.Giveaway",   "entry.created", 'campaign=gw_0042 user=@shiki_fan main="AL" contact="@shiki.fan (Bluesky)"'],
   ["14:12:08", "INFO",  "RX.Level",      "xp.granted",    "user=@code_mochi amount=6 channel=#fan-art reason=text"],
   ["14:11:45", "EVENT", "RX.Level",      "reward.role",   "user=@haru_codex level=30 role_added=Stargazer"],
   ["14:10:22", "INFO",  "RX.Mod",        "case.opened",   'case_id=84 type="warn" target=@spammer42 by=@admin'],

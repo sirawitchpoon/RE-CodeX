@@ -11,6 +11,7 @@ export const CHANNELS = {
   LOG_APPEND: "log.append",
   BOT_HEARTBEAT: "bot.heartbeat",
   LEVEL_CONFIG_CHANGED: "level.config.changed",
+  MEMBERS_CHANGED: "giveaway.members.changed",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -23,8 +24,10 @@ export interface GiveawayPublishPayload {
 export interface GiveawayEntryPayload {
   giveawayId: string;
   userId: string;
-  displayName: string;
-  platform: string;
+  memberId: string;
+  memberName: string;
+  contactType: "DISCORD" | "OTHER";
+  contactValue: string | null;
   createdAt: string;
 }
 
@@ -74,6 +77,10 @@ export interface LevelConfigChangedPayload {
   guildId: string;
 }
 
+export interface MembersChangedPayload {
+  guildId: string;
+}
+
 export type EventPayloadMap = {
   [CHANNELS.GIVEAWAY_PUBLISH]: GiveawayPublishPayload;
   [CHANNELS.GIVEAWAY_ENTRY]: GiveawayEntryPayload;
@@ -84,6 +91,7 @@ export type EventPayloadMap = {
   [CHANNELS.LOG_APPEND]: LogAppendPayload;
   [CHANNELS.BOT_HEARTBEAT]: BotHeartbeatPayload;
   [CHANNELS.LEVEL_CONFIG_CHANGED]: LevelConfigChangedPayload;
+  [CHANNELS.MEMBERS_CHANGED]: MembersChangedPayload;
 };
 
 export function encodeEvent<C extends ChannelName>(channel: C, payload: EventPayloadMap[C]): string {

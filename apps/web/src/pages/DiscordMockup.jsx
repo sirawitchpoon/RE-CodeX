@@ -14,7 +14,7 @@ export const DiscordMockup = () => (
         <div className="card-head" style={{ background: "var(--bg-1)" }}>
           <div className="card-title">
             <span className="dot" />
-            RX.Giveaway · Entry Modal Flow
+            RX.Giveaway · Main Pick Flow
           </div>
           <span className="pill live">interactive</span>
         </div>
@@ -101,7 +101,8 @@ export const DiscordMockup = () => (
                       <div className="dc-embed-desc">
                         ฉลองวันเกิดเมมเบอร์ REI! ร่วมลุ้นรับ{" "}
                         <strong style={{ color: "white" }}>Limited Cheki Set ×3</strong>{" "}
-                        โดยกดปุ่มด้านล่างและกรอกข้อมูลในแบบฟอร์ม
+                        — กด <strong>เข้าร่วม</strong> เพื่อเลือกเมน · กด{" "}
+                        <strong>แก้ไขข้อมูล</strong> เพื่อเปลี่ยนเมน/ช่องทางติดต่อ
                       </div>
                       <div className="dc-embed-fields">
                         <div className="dc-embed-field">
@@ -119,9 +120,9 @@ export const DiscordMockup = () => (
                       </div>
                       <div className="dc-button-row">
                         <button className="dc-btn special">
-                          <Sparkle size={12} color="#fff" /> เข้าร่วม Giveaway
+                          <Sparkle size={12} color="#fff" /> เข้าร่วม
                         </button>
-                        <button className="dc-btn secondary">ดูรายชื่อ (284)</button>
+                        <button className="dc-btn secondary">แก้ไขข้อมูล</button>
                       </div>
                       <div className="dc-embed-foot">
                         RE:CodeX Official · ดึงข้อมูลโดย RX.Giveaway v2.4.1
@@ -133,44 +134,55 @@ export const DiscordMockup = () => (
             </div>
 
             <div className="dc-modal-overlay">
-              <div className="dc-modal">
-                <div className="dc-modal-head">
-                  <h3>★ Birthday Pack — REI</h3>
-                  <p>กรอกข้อมูลเพื่อเข้าร่วมกิจกรรม</p>
+              <div
+                className="dc-modal"
+                style={{ maxWidth: 460, padding: 0, gap: 0 }}
+              >
+                <div
+                  className="dc-modal-head"
+                  style={{ borderBottom: "1px solid var(--d-border)", padding: "12px 14px" }}
+                >
+                  <h3 style={{ fontSize: 13 }}>เลือกเมนของคุณ</h3>
+                  <p style={{ fontSize: 11, opacity: 0.7 }}>
+                    เห็นเฉพาะคุณ · กดเลือกได้ครั้งเดียว เปลี่ยนใหม่ได้ภายหลัง
+                  </p>
                 </div>
-                <div className="dc-modal-body">
-                  <div className="dc-modal-field">
-                    <label>
-                      ชื่อในวง / DISPLAY NAME <span className="req">*</span>
-                    </label>
-                    <input defaultValue="Kazuki" />
-                  </div>
-                  <div className="dc-modal-field">
-                    <label>
-                      PLATFORM หลัก <span className="req">*</span>
-                    </label>
-                    <select defaultValue="Twitter">
-                      <option>Twitter</option>
-                      <option>Bluesky</option>
-                      <option>Pixiv</option>
-                    </select>
-                  </div>
-                  <div className="dc-modal-field">
-                    <label>PLATFORM HANDLE</label>
-                    <input placeholder="@yourname" defaultValue="@kazuki_v" />
-                    <div className="hint">ใช้ติดต่อกรณีได้รับรางวัล</div>
-                  </div>
-                  <div className="dc-modal-field">
-                    <label>ข้อความถึงเมมเบอร์</label>
-                    <textarea
-                      placeholder="(optional)"
-                      defaultValue="สุขสันต์วันเกิด REI ครับ! รักวงมากๆ"
-                    />
-                  </div>
+                <div
+                  className="dc-modal-body"
+                  style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 6 }}
+                >
+                  {[
+                    { name: "AL", color: "#c77dff", emoji: "💎" },
+                    { name: "Zerozu", color: "#7ae0ff", emoji: "🔷" },
+                    { name: "Wataru", color: "#6fe39a", emoji: "🌿" },
+                    { name: "Rei", color: "#ff6b8a", emoji: "🌸" },
+                    { name: "Baobei", color: "#ffc266", emoji: "🍯" },
+                    { name: "Iw", color: "#a3a3ff", emoji: "❄️" },
+                  ].map((m) => (
+                    <button
+                      key={m.name}
+                      className="dc-btn"
+                      style={{
+                        background: m.color + "1a",
+                        color: m.color,
+                        border: `1px solid ${m.color}55`,
+                      }}
+                    >
+                      {m.emoji} {m.name}
+                    </button>
+                  ))}
                 </div>
-                <div className="dc-modal-foot">
-                  <button className="dc-btn secondary">ยกเลิก</button>
-                  <button className="dc-btn success">ส่ง</button>
+                <div
+                  style={{
+                    borderTop: "1px solid var(--d-border)",
+                    padding: 12,
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  <strong style={{ color: "rgba(255,255,255,0.8)" }}>ขั้นถัดไป:</strong>{" "}
+                  ระบบจะถามว่าสะดวกติดต่อทาง Discord มั้ย — ถ้าไม่ จะเปิด modal ให้กรอกช่องทางอื่น
+                  (เช่น <span className="mono">@RLanz_Tn (Twitter)</span>)
                 </div>
               </div>
             </div>

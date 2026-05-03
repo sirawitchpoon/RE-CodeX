@@ -13,14 +13,22 @@ import { appPrisma } from "@recodex/db-app";
 import { pointsPrisma } from "@recodex/db-points";
 import { registerPublishHandler } from "./handlers/publish.js";
 import { registerButtonHandler } from "./handlers/button.js";
-import { registerModalHandler } from "./handlers/modal.js";
+import { registerPickMainHandler } from "./handlers/pickmain.js";
+import { registerMembersChangedHandler } from "./handlers/membersChanged.js";
 import { registerAnnounceHandler } from "./handlers/announce.js";
 import { registerEditHandler } from "./handlers/edit.js";
 import { registerCancelHandler } from "./handlers/cancel.js";
 import { startHeartbeat, stopHeartbeat } from "./heartbeat.js";
 
+// `GuildMembers` is a privileged intent — must be enabled in the Discord Dev
+// Portal. It is required to fetch the user's GuildMember and grant/swap the
+// main role on entry.
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+  ],
   partials: [Partials.Channel],
 });
 
@@ -31,7 +39,8 @@ client.once("ready", (c) => {
 
 registerPublishHandler(client);
 registerButtonHandler(client);
-registerModalHandler(client);
+registerPickMainHandler(client);
+registerMembersChangedHandler();
 registerAnnounceHandler(client);
 registerEditHandler(client);
 registerCancelHandler(client);
@@ -42,6 +51,7 @@ async function boot(): Promise<void> {
     CHANNELS.GIVEAWAY_ANNOUNCE,
     CHANNELS.GIVEAWAY_EDIT,
     CHANNELS.GIVEAWAY_CANCEL,
+    CHANNELS.MEMBERS_CHANGED,
   );
   await client.login(env.GIVEAWAY_BOT_TOKEN);
 }

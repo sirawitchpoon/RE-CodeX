@@ -27,8 +27,6 @@ function gradientFor(id) {
   return GW_GRADIENTS[h % GW_GRADIENTS.length];
 }
 
-const PLATFORM_LABEL = { TWITTER: "Twitter", BLUESKY: "Bluesky", PIXIV: "Pixiv" };
-
 function fmtEnds(d) {
   if (!d) return "—";
   const date = new Date(d);
@@ -66,23 +64,30 @@ function adaptGiveaway(g) {
   };
 }
 
-// Map an API entry to the [#, handle, name, platform, @handle, level, role,
-// time, isWinner] tuple Giveaway.jsx renders.
+// Normalize an API entry (post cross-DB join) into the shape Giveaway.jsx
+// renders. The API attaches `member` + `user` from points-db; mock entries in
+// data.js follow the same shape so design-preview mode renders identically.
 function adaptEntry(e, i) {
   const time = e.createdAt
     ? new Date(e.createdAt).toLocaleTimeString("en-GB", { hour12: false })
     : "—";
-  return [
-    `#${String(i + 1).padStart(3, "0")}`,
-    e.handle ?? e.userId ?? "—",
-    e.displayName ?? "—",
-    PLATFORM_LABEL[e.platform] ?? e.platform ?? "—",
-    e.handle ?? "—",
-    "—",
-    "—",
+  const u = e.user ?? {};
+  const m = e.member ?? {};
+  const displayName = u.displayName ?? u.username ?? e.userId ?? "—";
+  return {
+    num: `#${String(i + 1).padStart(3, "0")}`,
+    userId: e.userId ?? "—",
+    displayName,
+    username: u.username ?? null,
+    memberId: e.memberId ?? null,
+    memberName: m.name ?? "—",
+    memberAccent: m.accentColor ?? null,
+    memberEmoji: m.emoji ?? null,
+    contactType: e.contactType ?? "DISCORD",
+    contactValue: e.contactValue ?? null,
     time,
-    Boolean(e.isWinner),
-  ];
+    isWinner: Boolean(e.isWinner),
+  };
 }
 
 export function useGiveaways() {
@@ -104,7 +109,6 @@ export function useGiveawayEntries(id) {
   const { data, ...rest } = useApiOrFallback(path, import.meta.env.DEV ? ENTRIES : [], [id]);
   const rows = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    if (data.length > 0 && Array.isArray(data[0])) return data;
     return data.map(adaptEntry);
   }, [data]);
   return { data: rows, ...rest };
@@ -210,6 +214,13 @@ export function useLevelConfig() {
   return useApiOrFallback(path, null);
 }
 
+// ─── Giveaway oshi/main members ───────────────────────────────────────────
+
+export function useGiveawayMembers() {
+  const path = GUILD_ID ? `/api/giveaway/${encodeURIComponent(GUILD_ID)}/members` : null;
+  return useApiOrFallback(path, []);
+}
+
 // ─── Mutators ─────────────────────────────────────────────────────────────
 
 export async function createGiveaway(data, coverFile) {
@@ -255,4 +266,25 @@ export async function drawGiveaway(id, n) {
 }
 export async function announceGiveaway(id) {
   return api(`/api/giveaways/${id}/announce`, { method: "POST" });
+}
+
+export async function createGwMember(data) {
+  if (!GUILD_ID) throw new Error("missing_guild_id");
+  return api(`/api/giveaway/${encodeURIComponent(GUILD_ID)}/members`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+export async function updateGwMember(id, data) {
+  if (!GUILD_ID) throw new Error("missing_guild_id");
+  return api(`/api/giveaway/${encodeURIComponent(GUILD_ID)}/members/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+export async function deleteGwMember(id) {
+  if (!GUILD_ID) throw new Error("missing_guild_id");
+  return api(`/api/giveaway/${encodeURIComponent(GUILD_ID)}/members/${id}`, {
+    method: "DELETE",
+  });
 }

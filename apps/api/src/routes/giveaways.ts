@@ -12,7 +12,8 @@ import { Router } from "express";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { appPrisma, GiveawayStatus, GiveawayPlatform } from "@recodex/db-app";
+import { appPrisma, GiveawayStatus } from "@recodex/db-app";
+import { pointsPrisma } from "@recodex/db-points";
 import { CHANNELS, encodeEvent } from "@recodex/shared";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
@@ -65,7 +66,6 @@ function serializable<T>(value: T): T {
 
 // ─── schemas ───────────────────────────────────────────────────────────────
 
-const platformEnum = z.enum(["TWITTER", "BLUESKY", "PIXIV"]);
 const statusEnum = z.enum(["DRAFT", "SCHEDULED", "LIVE", "ENDED", "CANCELLED"]);
 
 const createSchema = z.object({
@@ -247,20 +247,35 @@ giveawaysRouter.delete("/giveaways/:id", async (req, res) => {
 // ─── lifecycle ─────────────────────────────────────────────────────────────
 
 giveawaysRouter.get("/giveaways/:id/entries", async (req, res) => {
-  const platform = req.query.platform;
-  const where: { giveawayId: string; platform?: GiveawayPlatform } = {
-    giveawayId: req.params.id,
-  };
-  if (typeof platform === "string") {
-    const p = platformEnum.safeParse(platform);
-    if (p.success) where.platform = p.data as GiveawayPlatform;
-  }
   const entries = await appPrisma.giveawayEntry.findMany({
-    where,
+    where: { giveawayId: req.params.id },
     orderBy: { createdAt: "desc" },
     take: 1000,
   });
-  res.json(serializable(entries));
+
+  // Cross-DB join: pull GiveawayMember + User from points-db in one round-trip
+  // each, then attach. Per CLAUDE.md the boundary stays soft FK + app-side
+  // joins — no Prisma relation across the two databases.
+  const memberIds = [...new Set(entries.map((e) => e.memberId))];
+  const userIds = [...new Set(entries.map((e) => e.userId))];
+  const [members, users] = await Promise.all([
+    memberIds.length > 0
+      ? pointsPrisma.giveawayMember.findMany({ where: { id: { in: memberIds } } })
+      : Promise.resolve([]),
+    userIds.length > 0
+      ? pointsPrisma.user.findMany({ where: { id: { in: userIds } } })
+      : Promise.resolve([]),
+  ]);
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const enriched = entries.map((e) => ({
+    ...e,
+    member: memberMap.get(e.memberId) ?? null,
+    user: userMap.get(e.userId) ?? null,
+  }));
+
+  res.json(serializable(enriched));
 });
 
 giveawaysRouter.post("/giveaways/:id/publish", async (req, res) => {
@@ -329,7 +344,27 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
     where: { id: { in: winners.map((w) => w.id) } },
   });
 
-  res.json(serializable({ winners: winnerRows }));
+  // Cross-DB join — admin needs to see Discord username + main name + contact
+  // when announcing winners.
+  const memberIds = [...new Set(winnerRows.map((w) => w.memberId))];
+  const userIds = [...new Set(winnerRows.map((w) => w.userId))];
+  const [members, users] = await Promise.all([
+    memberIds.length > 0
+      ? pointsPrisma.giveawayMember.findMany({ where: { id: { in: memberIds } } })
+      : Promise.resolve([]),
+    userIds.length > 0
+      ? pointsPrisma.user.findMany({ where: { id: { in: userIds } } })
+      : Promise.resolve([]),
+  ]);
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const enriched = winnerRows.map((w) => ({
+    ...w,
+    member: memberMap.get(w.memberId) ?? null,
+    user: userMap.get(w.userId) ?? null,
+  }));
+
+  res.json(serializable({ winners: enriched }));
 });
 
 giveawaysRouter.post("/giveaways/:id/end", async (req, res) => {

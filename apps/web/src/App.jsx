@@ -5,6 +5,7 @@ import { Dashboard } from "./pages/Dashboard.jsx";
 import { Members } from "./pages/Members.jsx";
 import { Logs } from "./pages/Logs.jsx";
 import { Giveaway } from "./pages/Giveaway.jsx";
+import { GiveawayMembers } from "./pages/GiveawayMembers.jsx";
 import { Leaderboard } from "./pages/Leaderboard.jsx";
 import { LevelRules } from "./pages/LevelRules.jsx";
 import { UserProfile } from "./pages/UserProfile.jsx";
@@ -31,6 +32,10 @@ const PAGES = {
   giveaway: {
     crumbs: ["RE:CodeX", "Botstack", "Giveaway"],
     render: () => <Giveaway />,
+  },
+  "gw-members": {
+    crumbs: ["RE:CodeX", "Botstack", "Giveaway — Members"],
+    render: () => <GiveawayMembers />,
   },
   level: {
     crumbs: ["RE:CodeX", "Botstack", "Level — Leaderboard"],

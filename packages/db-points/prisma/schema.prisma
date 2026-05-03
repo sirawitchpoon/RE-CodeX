@@ -23,11 +23,13 @@ model Guild {
   name      String
   createdAt DateTime @default(now())
 
-  branding    BrandingConfig?
-  levelConfig LevelConfig?
-  roleRewards RoleReward[]
-  xpTotals    XpTotal[]
-  xpEvents    XpEvent[]
+  branding        BrandingConfig?
+  levelConfig     LevelConfig?
+  roleRewards     RoleReward[]
+  xpTotals        XpTotal[]
+  xpEvents        XpEvent[]
+  giveawayMembers GiveawayMember[]
+  userMains       UserMain[]
 }
 
 model User {
@@ -39,6 +41,7 @@ model User {
 
   xpTotals XpTotal[]
   xpEvents XpEvent[]
+  mains    UserMain[]
 }
 
 // ─── XP / Leveling ────────────────────────────────────────────────────────────
@@ -136,4 +139,42 @@ model BrandingConfig {
   accentColor   String @default("#c77dff")
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// ─── Giveaway oshi/main fan-club ─────────────────────────────────────────────
+// Per-guild list of cast members fans can pick as their "main". Picking a
+// main grants the member's Discord role and tags the user's giveaway entries.
+// roleId hierarchy: the bot's role must be above each member's roleId.
+
+model GiveawayMember {
+  id          String   @id @default(cuid())
+  guildId     String
+  name        String
+  roleId      String
+  sortOrder   Int      @default(0)
+  accentColor String?
+  emoji       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guild     Guild      @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userMains UserMain[]
+
+  @@unique([guildId, name])
+  @@unique([guildId, roleId])
+  @@index([guildId, sortOrder])
+}
+
+model UserMain {
+  guildId   String
+  userId    String
+  memberId  String
+  updatedAt DateTime @updatedAt
+
+  guild  Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  member GiveawayMember @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@id([guildId, userId])
+  @@index([guildId, memberId])
 }

@@ -14,6 +14,7 @@ const NAV = [
     section: "BOTSTACK",
     items: [
       { id: "giveaway", label: "Giveaway Bot", icon: "gift", badge: "LIVE" },
+      { id: "gw-members", label: "Giveaway · Members", icon: "users" },
       { id: "level", label: "Level Bot", icon: "trophy" },
       { id: "rules", label: "XP Rules", icon: "sliders" },
       { id: "profile", label: "Member Profile", icon: "star" },

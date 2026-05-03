@@ -27,10 +27,11 @@ enum GiveawayStatus {
   CANCELLED
 }
 
-enum GiveawayPlatform {
-  TWITTER
-  BLUESKY
-  PIXIV
+// Where the user prefers to be contacted if they win. DISCORD = use the
+// userId mention; OTHER = arbitrary string the user typed in a modal.
+enum ContactPreference {
+  DISCORD
+  OTHER
 }
 
 model Giveaway {
@@ -58,20 +59,20 @@ model Giveaway {
 }
 
 model GiveawayEntry {
-  id          BigInt           @id @default(autoincrement())
-  giveawayId  String
-  userId      String           // soft FK → points-db User.id
-  displayName String
-  platform    GiveawayPlatform
-  handle      String?
-  message     String?
-  isWinner    Boolean          @default(false)
-  createdAt   DateTime         @default(now())
+  id           BigInt            @id @default(autoincrement())
+  giveawayId   String
+  userId       String             // soft FK → points-db User.id
+  memberId     String             // soft FK → points-db GiveawayMember.id (the picked oshi)
+  contactType  ContactPreference @default(DISCORD)
+  contactValue String?            // null when DISCORD; required string when OTHER
+  isWinner     Boolean            @default(false)
+  createdAt    DateTime           @default(now())
 
   giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
 
   @@unique([giveawayId, userId])
   @@index([giveawayId, createdAt])
+  @@index([giveawayId, memberId])
 }
 
 // ─── Logs / observability ─────────────────────────────────────────────────────

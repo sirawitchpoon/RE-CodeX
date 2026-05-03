@@ -4,6 +4,7 @@ import { PageHead } from "../components/PageHead.jsx";
 import {
   useGiveaways,
   useGiveawayEntries,
+  useGiveawayMembers,
   publishGiveaway,
   drawGiveaway,
   announceGiveaway,
@@ -296,12 +297,12 @@ export const Giveaway = () => {
                 name="winners"
                 cur={tab}
                 onClick={setTab}
-                count={ENTRIES.filter((e) => e[8]).length}
+                count={ENTRIES.filter((e) => e.isWinner).length}
               >
                 Winners
               </TabBtn>
-              <TabBtn name="modal" cur={tab} onClick={setTab}>
-                Modal Schema
+              <TabBtn name="flow" cur={tab} onClick={setTab}>
+                Flow Preview
               </TabBtn>
               <TabBtn name="rules" cur={tab} onClick={setTab}>
                 Rules
@@ -336,110 +337,68 @@ export const Giveaway = () => {
                       <tr>
                         <th style={{ width: 50 }}>#</th>
                         <th>Member</th>
-                        <th>Platform</th>
-                        <th>Handle</th>
-                        <th>Level</th>
-                        <th>Role</th>
+                        <th>Main</th>
+                        <th>Contact</th>
                         <th>Entered</th>
                         <th style={{ width: 50 }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {ENTRIES.filter((e) => (tab === "winners" ? e[8] : true)).map((e, i) => (
-                        <tr key={i} className={"e-row" + (e[8] ? " win" : "")}>
-                          <td className="mono dim">{e[0]}</td>
-                          <td>
-                            <span className="e-avatar">{e[1].slice(0, 2).toUpperCase()}</span>
-                            <span className="e-name">{e[2]}</span>
-                            <div style={{ paddingLeft: 32 }} className="e-handle">
-                              @{e[1]}
-                            </div>
-                          </td>
-                          <td>{e[3]}</td>
-                          <td className="mono">{e[4]}</td>
-                          <td className="mono">{e[5]}</td>
-                          <td>
-                            {e[6] === "—" ? (
-                              <span className="dim">—</span>
-                            ) : (
-                              <span
-                                className="pill solid"
-                                style={{
-                                  color: e[6] === "Stargazer" ? "var(--accent)" : "var(--cyan)",
-                                  background:
-                                    e[6] === "Stargazer"
-                                      ? "var(--accent-soft)"
-                                      : "rgba(122,224,255,0.06)",
-                                  border:
-                                    "1px solid " +
-                                    (e[6] === "Stargazer"
-                                      ? "var(--accent-glow)"
-                                      : "rgba(122,224,255,0.18)"),
-                                }}
-                              >
-                                {e[6]}
-                              </span>
-                            )}
-                          </td>
-                          <td className="mono dim">{e[7]}</td>
-                          <td>
-                            <button className="btn ghost btn-sm">
-                              <Icon name="more" size={11} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {ENTRIES.filter((e) => (tab === "winners" ? e.isWinner : true)).map((e, i) => {
+                        const initials = (e.username ?? e.displayName ?? "??").slice(0, 2).toUpperCase();
+                        return (
+                          <tr key={i} className={"e-row" + (e.isWinner ? " win" : "")}>
+                            <td className="mono dim">{e.num}</td>
+                            <td>
+                              <span className="e-avatar">{initials}</span>
+                              <span className="e-name">{e.displayName}</span>
+                              {e.username && (
+                                <div style={{ paddingLeft: 32 }} className="e-handle">
+                                  @{e.username}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              {e.memberName === "—" ? (
+                                <span className="dim">—</span>
+                              ) : (
+                                <span
+                                  className="pill solid"
+                                  style={{
+                                    color: e.memberAccent ?? "var(--accent)",
+                                    background: "rgba(199,125,255,0.08)",
+                                    border: "1px solid " + (e.memberAccent ?? "var(--accent-glow)") + "33",
+                                  }}
+                                >
+                                  {e.memberEmoji ? `${e.memberEmoji} ` : ""}{e.memberName}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              {e.contactType === "DISCORD" ? (
+                                <span className="pill solid" style={{ color: "var(--cyan)", background: "rgba(122,224,255,0.06)", border: "1px solid rgba(122,224,255,0.18)" }}>
+                                  Discord
+                                </span>
+                              ) : (
+                                <span className="mono" style={{ fontSize: 12 }}>{e.contactValue ?? "—"}</span>
+                              )}
+                            </td>
+                            <td className="mono dim">{e.time}</td>
+                            <td>
+                              <button className="btn ghost btn-sm">
+                                <Icon name="more" size={11} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </>
             )}
 
-            {tab === "modal" && (
-              <div
-                style={{
-                  padding: 16,
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  color: "var(--fg-1)",
-                }}
-              >
-                <CodeLine n={1}>
-                  <span className="com">// Modal ที่ผู้ใช้เห็นเมื่อกดปุ่ม "เข้าร่วม Giveaway"</span>
-                </CodeLine>
-                <CodeLine n={2}>
-                  <span className="kw">modal</span> <span className="str">"Birthday Pack — REI"</span> {"{"}
-                </CodeLine>
-                <CodeLine n={3}>
-                  {"  "}
-                  <span className="kw">field</span>{" "}
-                  <span className="str">"ชื่อในวง / Display Name"</span>{" "}
-                  <span className="num">required</span> max=<span className="num">32</span>
-                </CodeLine>
-                <CodeLine n={4}>
-                  {"  "}
-                  <span className="kw">field</span>{" "}
-                  <span className="str">"Platform หลัก"</span>{" "}
-                  <span className="kw">select</span> [
-                  <span className="str">"Twitter"</span>,
-                  <span className="str">"Bluesky"</span>,
-                  <span className="str">"Pixiv"</span>]
-                </CodeLine>
-                <CodeLine n={5}>
-                  {"  "}
-                  <span className="kw">field</span>{" "}
-                  <span className="str">"Platform Handle"</span> placeholder=
-                  <span className="str">"@yourname"</span>
-                </CodeLine>
-                <CodeLine n={6}>
-                  {"  "}
-                  <span className="kw">field</span>{" "}
-                  <span className="str">"ข้อความถึงเมมเบอร์"</span>{" "}
-                  <span className="kw">paragraph</span> max=<span className="num">300</span>
-                </CodeLine>
-                <CodeLine n={7}>{"}"}</CodeLine>
-              </div>
-            )}
+            {tab === "flow" && <FlowPreview />}
 
             {tab === "rules" && (
               <div
@@ -539,10 +498,83 @@ const MetaItem = ({ label, children }) => (
   </div>
 );
 
-const CodeLine = ({ n, children }) => (
-  <div className="code-line">
-    <span className="ln">{n}</span>
-    <span>{children}</span>
+const FlowPreview = () => {
+  const { data } = useGiveawayMembers();
+  const members = Array.isArray(data) ? data.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) : [];
+  return (
+    <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+      <FlowStep n={1} title="LIVE embed (ในแชต)">
+        <div style={{ display: "flex", gap: 8 }}>
+          <span className="pill solid" style={{ color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-glow)" }}>
+            ✨ เข้าร่วม
+          </span>
+          <span className="pill solid" style={{ color: "var(--fg-1)", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-1)" }}>
+            แก้ไขข้อมูล
+          </span>
+        </div>
+      </FlowStep>
+      <FlowStep n={2} title="ephemeral · เลือกเมน">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {members.length === 0 ? (
+            <span className="dim" style={{ fontSize: 12 }}>ยังไม่มีเมน — ไปหน้า "Giveaway · Members" เพื่อเพิ่ม</span>
+          ) : (
+            members.map((m) => (
+              <span
+                key={m.id}
+                className="pill solid"
+                style={{
+                  color: m.accentColor ?? "var(--accent)",
+                  background: "rgba(199,125,255,0.06)",
+                  border: "1px solid " + ((m.accentColor ?? "#c77dff") + "33"),
+                }}
+              >
+                {m.emoji ? `${m.emoji} ` : ""}{m.name}
+              </span>
+            ))
+          )}
+        </div>
+      </FlowStep>
+      <FlowStep n={3} title="ephemeral · ช่องทางติดต่อ">
+        <div style={{ display: "flex", gap: 8 }}>
+          <span className="pill solid" style={{ color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-glow)" }}>
+            Discord ได้เลย
+          </span>
+          <span className="pill solid" style={{ color: "var(--fg-1)", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-1)" }}>
+            ช่องทางอื่น
+          </span>
+        </div>
+      </FlowStep>
+      <FlowStep n={4} title="modal · กรอกช่องทาง (ถ้ากด 'อื่น')">
+        <div className="input mono" style={{ fontSize: 12, color: "var(--fg-3)" }}>@RLanz_Tn (Twitter)</div>
+        <div className="hint" style={{ marginTop: 4 }}>placeholder ตัวอย่างให้ผู้ใช้</div>
+      </FlowStep>
+    </div>
+  );
+};
+
+const FlowStep = ({ n, title, children }) => (
+  <div className="card" style={{ padding: 12 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 12, color: "var(--fg-2)" }}>
+      <span
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          background: "var(--accent-soft)",
+          color: "var(--accent)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 600,
+          fontSize: 11,
+          border: "1px solid var(--accent-glow)",
+        }}
+      >
+        {n}
+      </span>
+      <strong style={{ color: "var(--fg-1)" }}>{title}</strong>
+    </div>
+    {children}
   </div>
 );
 
@@ -850,14 +882,19 @@ const DrawModal = ({ giveaway, totalEntries, onClose, onDrawn, onAnnounce }) => 
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {winners.map((w) => (
-                    <div key={String(w.id)} className="who">
-                      <div className="av">
-                        {(w.displayName ?? w.handle ?? "??").slice(0, 2).toUpperCase()}
+                  {winners.map((w) => {
+                    const display = w.user?.displayName ?? w.user?.username ?? w.userId ?? "??";
+                    const contact = w.contactType === "DISCORD"
+                      ? "Discord"
+                      : (w.contactValue ?? "—");
+                    return (
+                      <div key={String(w.id)} className="who">
+                        <div className="av">{String(display).slice(0, 2).toUpperCase()}</div>
+                        <span>{display}</span>
+                        <span className="dim" style={{ marginLeft: 8, fontSize: 11 }}>· {contact}</span>
                       </div>
-                      <span>{w.displayName ?? w.userId}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

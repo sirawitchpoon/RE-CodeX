@@ -27,6 +27,7 @@ import { usersRouter } from "./routes/users.js";
 import { logsRouter } from "./routes/logs.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { authRouter } from "./routes/auth.js";
+import { membersRouter } from "./routes/members.js";
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use("/api", healthRouter);
 app.use("/api", eventsRouter);
 app.use("/api", giveawaysRouter);
 app.use("/api", levelsRouter);
+app.use("/api", membersRouter);
 app.use("/api", leaderboardRouter);
 app.use("/api", usersRouter);
 app.use("/api", logsRouter);

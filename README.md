@@ -4,44 +4,83 @@ VTuber-themed Discord bot platform for an idol-style server. Two bots
 (Giveaway + Level), one REST/SSE API, one React backoffice — all in one
 Docker stack ready to drop on a VPS.
 
-The fan community is called **Signals** and the level currency is **EXP**.
-Both labels are stored in `BrandingConfig` and rendered through a single
-helper, so renaming them server-wide is a config change — no code edits.
+**Highlights**
+
+- **Button-only Giveaway entry** — fans click *เข้าร่วม* on the embed, pick
+  one of six cast members as their **main** (oshi), then choose
+  *Discord ติดต่อ* or supply a custom contact handle via a one-field modal.
+  Picking a main grants the member's Discord role; switching mains swaps
+  the role atomically.
+- **XP/Level bot** — text/voice/reaction grants with anti-spam, level curve
+  config, role rewards, manual grants from the backoffice, full reset.
+- **Backoffice SPA** — login-gated; live entries via SSE; cast roster CRUD;
+  giveaway lifecycle (DRAFT → PUBLISH → DRAW → ANNOUNCE / END / CANCEL).
+- **Two-DB split** — high-value XP/cast data lives in `points-db`; app
+  state lives in `app-db`. Backups and migrations are separate.
+- **Brand-renamable** — the fan community label is **Signals**, the XP
+  unit is **EXP**, and the cast roster is admin-managed. All three are
+  config, not constants — rename server-wide via DB or UI.
+
+## Table of contents
+
+- [Architecture](#architecture)
+- [Repo layout](#repo-layout)
+- [Local dev (without Docker)](#local-dev-without-docker)
+- [Production (Docker on VPS)](#production-docker-on-vps)
+- [Required env](#required-env)
+- [Discord setup checklist](#discord-setup-checklist)
+- [Backoffice features](#backoffice-features)
+  - [Cast Members admin](#cast-members-admin-one-time-setup-before-any-giveaway)
+  - [Giveaway lifecycle](#giveaway-lifecycle-button-only-entry-flow)
+  - [XP feature toggles](#xp-feature-toggles)
+  - [Reset XP before launch](#reset-xp-before-launch)
+- [Smoke test](#smoke-test)
+- [Backups](#backups)
+- [Renaming Signals / EXP / cast](#renaming-signals--exp--cast)
+- [Auth](#auth)
 
 ## Architecture
 
 ```
-                          ┌─────────────┐
-   browser ──TLS──▶ Caddy ─┤  /          │──▶ web (nginx serving dist/)
-                          │  /api/*     │──▶ api (Express)
-                          │  /uploads/* │──▶ api (static files)
-                          │  /api/events/* │──▶ api (SSE, flush -1)
-                          └──────┬──────┘
-                                 │
-                ┌────────────────┼─────────────────┐
-                ▼                ▼                 ▼
-         ┌────────────┐   ┌────────────┐    ┌────────────┐
-         │ bot-       │   │ bot-level  │    │ api        │
-         │ giveaway   │   │ (XP grants,│    │ (REST +    │
-         │ (button +  │   │  /rank,/lb)│    │  multipart │
-         │  modal)    │   │            │    │  + SSE)    │
-         └─────┬──────┘   └─────┬──────┘    └─────┬──────┘
-               │                 │                 │
-               ├─────────────────┼─────────────────┤
-               ▼                 ▼                 ▼
-       ┌────────────┐    ┌────────────┐    ┌────────────┐
-       │ points-db  │    │  app-db    │    │   Redis    │
-       │ (postgres) │    │ (postgres) │    │ (cool+pub) │
-       │ XP/Signals │    │ Giveaway / │    │            │
-       │ — backup!  │    │ Logs / Bot │    │            │
-       └────────────┘    └────────────┘    └────────────┘
+                            ┌─────────────────┐
+   browser ──TLS──▶ Caddy ──┤ /               ├──▶ web (nginx serving dist/)
+                            │ /api/*          ├──▶ api (Express)
+                            │ /uploads/*      ├──▶ api (static files)
+                            │ /api/events/*   ├──▶ api (SSE, flush_interval -1)
+                            └────────┬────────┘
+                                     │
+                  ┌──────────────────┼──────────────────┐
+                  ▼                  ▼                  ▼
+           ┌─────────────┐   ┌─────────────┐    ┌─────────────┐
+           │ bot-        │   │ bot-level   │    │ api         │
+           │ giveaway    │   │ XP grants   │    │ REST + SSE  │
+           │ • main pick │   │ • /rank     │    │ + multipart │
+           │ • contact   │   │ • /lb       │    │             │
+           │ • role swap │   │ • level-up  │    │             │
+           └──────┬──────┘   └──────┬──────┘    └──────┬──────┘
+                  │                  │                  │
+                  └─────── Redis pub/sub ────────┐      │
+                                                 ▼      ▼
+                  ┌──────────────────┐   ┌─────────────────┐
+                  │ points-db        │   │  app-db         │
+                  │ (postgres)       │   │ (postgres)      │
+                  │ • XpEvent/Total  │   │ • Giveaway      │
+                  │ • LevelConfig    │   │ • GiveawayEntry │
+                  │ • RoleReward     │   │ • Log           │
+                  │ • BrandingConfig │   │ • BotInstance   │
+                  │ • GiveawayMember │   │ • AdminUser     │
+                  │ • UserMain       │   │                 │
+                  │ — HIGH VALUE     │   │                 │
+                  └──────────────────┘   └─────────────────┘
 ```
 
-**Why two Postgres containers?** The points data (XP, levels, role
-rewards, branding) lives in `points-db` so schema migrations on giveaway
-or log features can never put it at risk. Backups for `points-data` and
-`app-data` are handled separately, with the points volume being the
-high-value one.
+**Why two Postgres containers?** The high-value data (XP, levels, role
+rewards, branding, **the cast roster**, **per-user oshi**) lives in
+`points-db` so schema migrations on giveaway/log features can never put
+it at risk. Backups for `points-data` and `app-data` are handled
+separately. References that cross the boundary (e.g.
+`GiveawayEntry.memberId`) are plain `String` columns — soft FKs joined
+in app code, never as a Prisma relation.
 
 **Why SSE not WebSocket?** All realtime is server→client. SSE survives
 Caddy/HTTP/2 with `flush_interval -1` and needs no sticky sessions.
@@ -50,19 +89,28 @@ Caddy/HTTP/2 with `flush_interval -1` and needs no sticky sessions.
 shouldn't pay an HTTP round-trip on every grant. Both bots and the API
 import the same Prisma clients from `packages/db-{points,app}`.
 
+**Why state in customIds?** Discord button interactions don't carry
+session state, so `bot-giveaway` packs `(giveawayId, mode, memberId)`
+into each customId so the next click knows which entry to commit, and
+whether to INSERT (`mode=n`) or UPDATE (`mode=e`).
+
 ## Repo layout
 
 ```
 apps/
-  web/                React + Vite SPA (backoffice handed off from claude design)
-  api/                Express + SSE + multipart
-  bot-giveaway/       discord.js v14 — button + 4-field modal + announce
+  web/                React + Vite SPA (login-gated backoffice)
+  api/                Express + SSE + multipart uploads
+  bot-giveaway/       discord.js v14 — multi-step button flow:
+                      embed (เข้าร่วม / แก้ไขข้อมูล) → 6 main buttons →
+                      contact preference (Discord / อื่น) → optional modal
   bot-level/          discord.js v14 — XP grants + /rank + /leaderboard
 packages/
-  db-points/          Prisma schema for the high-value DB (Guild, User,
-                      BrandingConfig, LevelConfig, RoleReward, XpEvent, XpTotal)
-  db-app/             Prisma schema for app DB (Giveaway, GiveawayEntry, Log,
-                      BotInstance) — references points via plain String columns
+  db-points/          Prisma schema for the high-value DB:
+                      Guild, User, BrandingConfig, LevelConfig, RoleReward,
+                      XpEvent, XpTotal, GiveawayMember, UserMain
+  db-app/             Prisma schema for app DB:
+                      Giveaway, GiveawayEntry, Log, BotInstance, AdminUser
+                      (references points-db via plain String columns)
   shared/             level math (xpForLevel/levelForXp/progressToNext),
                       Redis channel/payload contract, branding renderLabel()
 infra/
@@ -133,38 +181,113 @@ See `infra/compose/.env.example` for the full list. The non-defaultable ones:
 
 ## Discord setup checklist
 
-For each of the **two** Bot applications in the [Discord Developer Portal](https://discord.com/developers/applications):
+Two Bot applications in the [Discord Developer Portal](https://discord.com/developers/applications). Both need privileged intents — toggle them ON in **Bot → Privileged Gateway Intents** before inviting:
 
-1. **Bot tab** → reset/copy token. Toggle ON:
-   - **MESSAGE CONTENT INTENT** (bot-level needs message length)
-   - **SERVER MEMBERS INTENT** (bot-level needs to add roles on level-up)
-   - **PRESENCE INTENT** (optional — for online/idle/offline display)
-2. **OAuth2 → URL Generator**:
-   - Scopes: `bot`, `applications.commands`
-   - Permissions for **bot-giveaway**: `Send Messages`, `Embed Links`, `Attach Files`, `Use External Emojis`, `Read Message History`
-   - Permissions for **bot-level**: above + `Manage Roles`, `Read Messages/View Channels`, `Add Reactions`
-3. Open the generated URL → invite the bot to your server.
-4. Make sure the bot's role sits **above** every role it needs to assign in the role list (Discord can't grant a role higher than its own).
+### bot-giveaway
+
+| Setting | Value |
+| --- | --- |
+| **Server Members Intent** (privileged) | ON — required to fetch the user and call `roles.add/remove` |
+| **Message Content Intent** | OFF (not used) |
+| OAuth2 scopes | `bot`, `applications.commands` |
+| Permissions | `Send Messages`, `Embed Links`, `Attach Files`, `Use External Emojis`, `Read Message History`, **`Manage Roles`** |
+
+### bot-level
+
+| Setting | Value |
+| --- | --- |
+| **Message Content Intent** (privileged) | ON — needed for message length / anti-spam |
+| **Server Members Intent** (privileged) | ON — adds reward roles on level-up |
+| **Presence Intent** (privileged) | OPTIONAL — only for online/idle/offline display |
+| OAuth2 scopes | `bot`, `applications.commands` |
+| Permissions | `Send Messages`, `Embed Links`, `Read Messages/View Channels`, `Read Message History`, `Add Reactions`, **`Manage Roles`** |
+
+### Role hierarchy — non-obvious gotcha
+
+Both bots assign roles. Discord refuses to grant a role higher than the
+bot's own top role. After inviting:
+
+1. Open **Server Settings → Roles**.
+2. Drag **each bot's role above** every role it needs to assign:
+   - bot-giveaway → above each of the 6 cast/oshi roles
+   - bot-level → above each `RoleReward.roleId`
+3. If you later add a higher cast role or reward role, repeat the drag.
 
 Slash commands (`/rank`, `/leaderboard`) register guild-scoped on bot-level boot — they appear in the slash menu within ~60 seconds.
 
 ## Backoffice features
 
-### Giveaway workflow
+The SPA mounts under the root path; nav lives in the left sidebar
+(Overview / Botstack / Mockups / System).
 
-1. **สร้าง Giveaway** — Giveaway page → "สร้าง Giveaway" button → fill form (Channel ID is the Discord channel ID where the embed will post, requires Developer Mode to copy).
-2. Giveaway is created in `DRAFT` status.
-3. Click **Publish** → bot posts the embed in Discord with the "เข้าร่วม Giveaway" button.
-4. Users click the button → fill the 4-field modal → entry stored.
-5. When ready → click **สุ่มผู้โชคดี** → Roll → **ประกาศใน Discord**.
+### Cast Members admin (one-time setup before any giveaway)
+
+**Botstack → Giveaway · Members.** Manages the per-guild oshi roster.
+Each row stores:
+
+| Column | Purpose |
+| --- | --- |
+| `name` | Label on the Discord button (e.g. `AL`, `Zerozu`, `Wataru`, `Rei`, `Baobei`, `Iw`) |
+| `roleId` | Discord role granted when a user picks this main |
+| `sortOrder` | Position in the picker — ascending |
+| `accentColor` | Hex (e.g. `#c77dff`) — pill color in the backoffice + Discord button accent |
+| `emoji` | Optional Unicode/Discord emoji prefix on the button |
+
+Bot side: `bot-giveaway` caches the list per-guild for 60s; the API
+publishes `MEMBERS_CHANGED` on every CRUD so the cache invalidates
+within milliseconds — no restart needed.
+
+`DELETE` is blocked with `409 in_use` if any user has picked that member
+as their main. Reassign or wait until those `UserMain` rows clear, then
+retry.
+
+### Giveaway lifecycle (button-only entry flow)
+
+**Botstack → Giveaway Bot → สร้าง Giveaway** to create. Fill title /
+prize / description / channel ID (Developer Mode → right-click channel
+→ Copy ID) / winners count / ends-at / cover image. Created in `DRAFT`.
+
+```
+DRAFT ─► Publish ─► LIVE ─► End          ─► ENDED
+                       └──► Draw ─► Announce ─► ENDED
+                       └──► Cancel             ─► CANCELLED
+```
+
+- **Publish** — bot posts the embed in the chosen channel. The embed has
+  two buttons: **เข้าร่วม** (Primary) and **แก้ไขข้อมูล** (Secondary).
+- **เข้าร่วม** (user-side) — opens an ephemeral with one button per cast
+  member → user picks → step-2 ephemeral asks *Discord ติดต่อได้เลย* /
+  *ช่องทางอื่น*. Picking *Discord* commits immediately. Picking *อื่น*
+  opens a single-field modal with placeholder `@RLanz_Tn (Twitter)` for
+  free-form input. Either way the entry is saved + the cast member's
+  Discord role is granted.
+- **แก้ไขข้อมูล** (user-side) — same flow but in `mode=e` so the entry
+  is UPDATEd, and if the user picked a *different* cast member their
+  old main role is removed and the new one added atomically.
+- **Edit** (admin-side, on the giveaway hero card) — bot re-renders the
+  Discord embed if the giveaway is `LIVE`.
+- **สุ่มผู้โชคดี** — uniform random over all entries (cast pick is
+  flavor only, doesn't affect odds). Winner rows include each user's
+  contact info so the admin knows where to reach them.
+- **ประกาศใน Discord** — bot replies under the original embed mentioning
+  each `<@userId>`.
+- **End** — flips to `ENDED` without picking winners; both buttons in
+  Discord become disabled.
+- **Cancel** — flips to `CANCELLED`; embed is replaced with a
+  strikethrough version.
 
 ### XP feature toggles
 
-LevelRules page → XP Sources card. Toggle Text / Voice / Reactions / Daily Streak on or off. Click **บันทึก** to persist; the change propagates to bot-level via Redis pub/sub immediately (no restart needed).
+**Botstack → XP Rules → XP Sources.** Toggle Text / Voice / Reactions /
+Daily Streak. Click **บันทึก** to persist; the change propagates to
+bot-level via `LEVEL_CONFIG_CHANGED` immediately — no restart.
 
 ### Reset XP before launch
 
-LevelRules page → header → "Reset XP คะแนนทั้งเซิร์ฟ". Must type `RESET` in the confirmation field. Wipes `XpEvent` + `XpTotal` for the guild; LevelConfig and RoleRewards are preserved.
+**Botstack → XP Rules → header → "Reset XP คะแนนทั้งเซิร์ฟ".** Must type
+`RESET` in the confirmation field. Wipes `XpEvent` + `XpTotal` for the
+guild; `LevelConfig`, `RoleReward`, `GiveawayMember`, `UserMain` are
+preserved.
 
 Equivalent direct SQL:
 ```bash
@@ -175,28 +298,70 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml exec points-d
 
 ### Sample data (dev/preview only)
 
-To populate 3 sample giveaways (LIVE / SCHEDULED / ENDED) so the backoffice renders something before real Discord activity flows in:
+3 sample giveaways (LIVE / SCHEDULED / ENDED) for UI preview before real
+Discord activity flows in:
 
 ```bash
 docker compose --env-file .env -f infra/compose/docker-compose.yml \
   --profile seed run --rm seed-sample
 ```
 
-This is **idempotent** (clears `sample_*` rows before inserting) and is **never run automatically** — only on demand.
+Idempotent (clears `sample_*` rows before inserting). Entries are
+**not** seeded — exercise the actual button flow in Discord to populate
+`GiveawayEntry`.
 
 ## Smoke test
 
-After `docker compose up -d`:
+After `docker compose up -d` and the first `seed-admin` run:
 
-1. `curl https://<domain>/api/health` → JSON with all `true`
-2. Open the SPA → all pages navigate without errors
-3. Post a >4-char message in a non-excluded channel → `XpTotal.totalXp` grows; `/rank` reflects it
-4. Insert a `RoleReward` at level 1 (POST `/api/level/<guildId>/role-rewards`) → keep posting until level crosses → bot adds the role
-5. From the backoffice Giveaway page: create + publish → bot posts the embed with the **เข้าร่วม Giveaway** button
-6. Click the button in Discord → 4-field modal → submit → ephemeral confirmation → entry appears in the backoffice
-7. Click `สุ่มผู้โชคดี` then `ประกาศใน Discord` → bot replies in-channel with mentions
-8. Toggle off "Text Messages" in LevelRules → บันทึก → post a message → XP does not increase
-9. `psql` into `points-db` and `UPDATE "BrandingConfig" SET "signalsLabel"='Stardust', "xpLabel"='Aether'` → next `/rank` and next published embed use the new labels
+**Health + XP**
+
+1. `curl https://<domain>/api/health` → JSON with all four flags `true`
+2. Log into the SPA → all pages navigate without errors
+3. Post a >4-char message in a non-excluded channel → `XpTotal.totalXp`
+   grows; `/rank` in Discord reflects it
+4. Insert a `RoleReward` at level 1 (POST
+   `/api/level/<guildId>/role-rewards`) → keep posting until level
+   crosses → bot adds the role
+
+**Giveaway end-to-end**
+
+5. **Botstack → Giveaway · Members** → create the 6 cast rows with real
+   Discord `roleId` values + distinct `accentColor`s. Tail `bot-giveaway`
+   logs after each save → must see `members cache invalidated`.
+6. **Botstack → Giveaway Bot → สร้าง Giveaway** → fill title / prize /
+   channel → Save (status = `DRAFT`).
+7. Click **Publish** → in Discord, the embed appears with two buttons
+   (**เข้าร่วม** + **แก้ไขข้อมูล**).
+8. As a test user, click **เข้าร่วม** → ephemeral shows 6 cast buttons →
+   pick one → step-2 ephemeral asks contact preference → click
+   **Discord ได้เลย** → ephemeral switches to `✅`. Verify in Discord
+   that the cast member's role is now on the user; verify the entry
+   appears in the backoffice within ~1s (SSE).
+9. Click **เข้าร่วม** *again* on the same giveaway → ephemeral says
+   "เข้าร่วมแล้ว ใช้ปุ่ม **แก้ไขข้อมูล**".
+10. Click **แก้ไขข้อมูล** → pick a *different* cast member → step-2 →
+    **ช่องทางอื่น** → modal opens with placeholder `@RLanz_Tn (Twitter)`
+    → submit → entry's `memberId` updates, old main role is removed,
+    new main role is added, `contactType=OTHER`, `contactValue` shows
+    in the entries table.
+11. Publish a *second* giveaway → click **เข้าร่วม** as the same user →
+    no role action (already had a main); flow proceeds straight to
+    contact preference.
+12. **สุ่มผู้โชคดี → Roll → ประกาศใน Discord** → bot replies under the
+    original embed mentioning each `<@userId>`. The DrawModal in the
+    backoffice shows each winner's contact (Discord or custom string).
+
+**Live config changes**
+
+13. Toggle off **Text Messages** in XP Rules → บันทึก → post a message →
+    XP does not increase (verified via `/rank`).
+14. SQL `UPDATE "BrandingConfig" SET "signalsLabel"='Stardust',
+    "xpLabel"='Aether'` → next `/rank` and next published Giveaway embed
+    use the new labels (or use the backoffice branding form if wired).
+15. Edit a cast member's `name` in the admin UI → click **เข้าร่วม** on
+    a fresh giveaway as a new user → picker shows the new label
+    immediately (`MEMBERS_CHANGED` invalidates the cache).
 
 ## Backups
 
@@ -217,22 +382,36 @@ docker run --rm -v recodex_uploads:/src -v "$PWD":/dst alpine \
   tar czf /dst/uploads-$(date +%F-%H%M).tgz -C /src .
 ```
 
-## Renaming Signals / EXP
+## Renaming Signals / EXP / cast
+
+The fan label, XP unit, currency emoji, and accent color all live in
+`BrandingConfig`:
 
 ```sql
 -- points-db
 UPDATE "BrandingConfig"
-SET "signalsLabel" = 'Stardust',
-    "xpLabel"      = 'Aether',
-    "currencyEmoji"= '⭐',
-    "accentColor"  = '#ffd166'
+SET "signalsLabel"  = 'Stardust',
+    "xpLabel"       = 'Aether',
+    "currencyEmoji" = '⭐',
+    "accentColor"   = '#ffd166'
 WHERE "guildId" = '<your-guild-id>';
 ```
 
-The change shows up:
-- on the next `/rank` and `/leaderboard` reply
-- on the next published Giveaway embed
-- in the `/api/branding/<guildId>` response (backoffice can read this to retitle UI text too)
+Cast members live in `GiveawayMember` — manage them via the
+backoffice **Giveaway · Members** page (preferred) or directly:
+
+```sql
+-- points-db, example: rename "Wataru" without touching anything downstream
+UPDATE "GiveawayMember"
+SET "name" = 'Wataru-kun', "accentColor" = '#9b59b6', "emoji" = '🌿'
+WHERE "guildId" = '<your-guild-id>' AND "name" = 'Wataru';
+```
+
+Either change shows up:
+- on the next `/rank`, `/leaderboard`, and Giveaway embed
+- on the next *เข้าร่วม* / *แก้ไขข้อมูล* ephemeral (cache TTL 60s, but
+  publishing through the API invalidates immediately)
+- in the SPA — backoffice fetches branding + members fresh on page load
 
 ## Auth
 
