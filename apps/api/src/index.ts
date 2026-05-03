@@ -31,6 +31,10 @@ import { membersRouter } from "./routes/members.js";
 
 const app = express();
 
+// Behind Caddy in prod; trust the first proxy hop so req.ip reflects the
+// real client IP (used by /auth/login per-IP lockout).
+app.set("trust proxy", 1);
+
 app.use(cors({ origin: env.CORS_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
 app.use(
@@ -40,6 +44,20 @@ app.use(
     autoLogging: {
       ignore: (req: { url?: string }) =>
         req.url?.startsWith("/api/events/") ?? false,
+    },
+    // EventSource passes the JWT via ?token=… because it cannot set headers.
+    // Strip it from the logged URL and redact Authorization on every request.
+    serializers: {
+      req: (req: { method?: string; url?: string; remoteAddress?: string; remotePort?: number }) => ({
+        method: req.method,
+        url: req.url?.replace(/([?&])token=[^&]*/g, "$1token=[REDACTED]"),
+        remoteAddress: req.remoteAddress,
+        remotePort: req.remotePort,
+      }),
+    },
+    redact: {
+      paths: ['req.headers.authorization', 'req.headers.cookie'],
+      censor: '[REDACTED]',
     },
   }),
 );

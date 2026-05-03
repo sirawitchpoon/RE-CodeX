@@ -1,8 +1,17 @@
 // POST /api/auth/login   { username, password }  → { token, user }
 // GET  /api/auth/me                              → { user } (requires Bearer)
 //
-// Login is rate-limited per-username via Redis SETEX counter. After 5
-// failures in 15 minutes the account locks out for 15 minutes.
+// Login is rate-limited via two Redis SETEX counters tracked in parallel:
+//
+//   user-bucket  keyed by lowercase username — protects an individual account.
+//                Low threshold (5/15min) so brute force on one user is stopped fast.
+//
+//   ip-bucket    keyed by req.ip — protects against attackers who rotate
+//                usernames to dodge the user-bucket. Higher threshold so a
+//                shared NAT egress (office, mobile carrier) does not lock out
+//                legit users when one teammate fat-fingers a few times.
+//
+// Both buckets must clear; either one tripping responds 429.
 
 import { Router } from "express";
 import bcrypt from "bcryptjs";
@@ -19,7 +28,8 @@ const loginSchema = z.object({
   password: z.string().min(1).max(200),
 });
 
-const MAX_FAILS = 5;
+const USER_MAX_FAILS = 5;
+const IP_MAX_FAILS = 20;
 const WINDOW_SEC = 15 * 60;
 
 authRouter.post("/auth/login", async (req, res) => {
@@ -30,9 +40,14 @@ authRouter.post("/auth/login", async (req, res) => {
   }
   const { username, password } = parsed.data;
 
-  const failKey = `auth:fails:${username.toLowerCase()}`;
-  const fails = Number((await redis.get(failKey)) ?? 0);
-  if (fails >= MAX_FAILS) {
+  const userKey = `auth:fails:user:${username.toLowerCase()}`;
+  const ipKey = `auth:fails:ip:${req.ip ?? "unknown"}`;
+
+  const [userFails, ipFails] = await Promise.all([
+    redis.get(userKey).then((v) => Number(v ?? 0)),
+    redis.get(ipKey).then((v) => Number(v ?? 0)),
+  ]);
+  if (userFails >= USER_MAX_FAILS || ipFails >= IP_MAX_FAILS) {
     res.status(429).json({ error: "too_many_attempts" });
     return;
   }
@@ -45,13 +60,18 @@ authRouter.post("/auth/login", async (req, res) => {
     : await bcrypt.compare(password, "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvi");
 
   if (!user || !ok) {
-    await redis.multi().incr(failKey).expire(failKey, WINDOW_SEC).exec();
-    logger.warn({ username }, "login failed");
+    await Promise.all([
+      redis.multi().incr(userKey).expire(userKey, WINDOW_SEC).exec(),
+      redis.multi().incr(ipKey).expire(ipKey, WINDOW_SEC).exec(),
+    ]);
+    logger.warn({ username, ip: req.ip }, "login failed");
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
 
-  await redis.del(failKey);
+  // Clear the user counter on success; keep the IP counter so a successful
+  // login doesn't reset an attacker who happens to know one valid credential.
+  await redis.del(userKey);
   await appPrisma.adminUser.update({
     where: { id: user.id },
     data: { lastLoginAt: new Date() },

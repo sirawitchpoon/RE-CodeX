@@ -239,6 +239,13 @@ giveawaysRouter.delete("/giveaways/:id", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
+  // Refuse to delete a LIVE giveaway — its Discord embed is still in chat
+  // accepting button presses; the bot has no signal to remove it. Force the
+  // admin to End or Cancel first (those flows clean up the embed).
+  if (existing.status === "LIVE") {
+    res.status(409).json({ error: "live_cannot_delete" });
+    return;
+  }
   await deleteCoverIfAny(existing.coverPath);
   await appPrisma.giveaway.delete({ where: { id: existing.id } });
   res.status(204).end();
@@ -315,6 +322,10 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
+  if (giveaway.status === "CANCELLED") {
+    res.status(409).json({ error: "already_cancelled" });
+    return;
+  }
 
   const parsedQuery = drawQuerySchema.safeParse(req.query);
   if (!parsedQuery.success) {
@@ -323,26 +334,36 @@ giveawaysRouter.post("/giveaways/:id/draw", async (req, res) => {
   }
   const n = parsedQuery.data.n ?? giveaway.winnersCount;
 
-  const eligible = await appPrisma.giveawayEntry.findMany({
-    where: { giveawayId: giveaway.id, isWinner: false },
-    select: { id: true, userId: true },
+  // Idempotent draw: a second call with winners already persisted returns the
+  // same set instead of pulling more entries on top. Run the read+pick+mark
+  // inside one transaction so two simultaneous calls cannot both pass the
+  // "no winners yet" gate.
+  const winnerRows = await appPrisma.$transaction(async (tx) => {
+    const existing = await tx.giveawayEntry.findMany({
+      where: { giveawayId: giveaway.id, isWinner: true },
+    });
+    if (existing.length > 0) return existing;
+
+    const eligible = await tx.giveawayEntry.findMany({
+      where: { giveawayId: giveaway.id, isWinner: false },
+      select: { id: true, userId: true },
+    });
+    if (eligible.length === 0) return [];
+
+    const picks = drawWinners(eligible, { n });
+    await tx.giveawayEntry.updateMany({
+      where: { id: { in: picks.map((w) => w.id) } },
+      data: { isWinner: true },
+    });
+    return tx.giveawayEntry.findMany({
+      where: { id: { in: picks.map((w) => w.id) } },
+    });
   });
 
-  if (eligible.length === 0) {
+  if (winnerRows.length === 0) {
     res.status(409).json({ error: "no_eligible_entries" });
     return;
   }
-
-  const winners = drawWinners(eligible, { n });
-
-  await appPrisma.giveawayEntry.updateMany({
-    where: { id: { in: winners.map((w) => w.id) } },
-    data: { isWinner: true },
-  });
-
-  const winnerRows = await appPrisma.giveawayEntry.findMany({
-    where: { id: { in: winners.map((w) => w.id) } },
-  });
 
   // Cross-DB join — admin needs to see Discord username + main name + contact
   // when announcing winners.
