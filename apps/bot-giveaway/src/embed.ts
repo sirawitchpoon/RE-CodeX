@@ -45,7 +45,6 @@ export async function buildGiveawayEmbed(
   // button labels "เข้าร่วม" / "แก้ไขข้อมูล" are self-explanatory.
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setAuthor({ name: "NEW GIVEAWAY" })
     .setTitle(`${b.currencyEmoji} ${giveaway.title}`)
     .setDescription(`**Reward:** ${giveaway.prize}`)
     .addFields(
