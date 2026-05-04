@@ -15,7 +15,6 @@ import {
   type Branding,
   DEFAULT_BRANDING,
   parseAccentColor,
-  renderLabel,
 } from "@recodex/shared";
 import { env } from "./env.js";
 
@@ -23,7 +22,6 @@ export interface GiveawayForEmbed {
   id: string;
   title: string;
   prize: string;
-  description: string | null;
   coverPath: string | null;
   winnersCount: number;
   endsAt: Date | null;
@@ -42,30 +40,25 @@ export async function buildGiveawayEmbed(
   const b = branding ?? DEFAULT_BRANDING;
   const color = parseAccentColor(b.accentColor);
 
+  // Minimal embed: Title + Reward (description) + 2 inline fields
+  // (Ends + จำนวนผู้ที่ได้รับรางวัล). Helper text stays out — the
+  // button labels "เข้าร่วม" / "แก้ไขข้อมูล" are self-explanatory.
   const embed = new EmbedBuilder()
     .setColor(color)
     .setAuthor({ name: "NEW GIVEAWAY" })
     .setTitle(`${b.currencyEmoji} ${giveaway.title}`)
-    .setDescription(
-      [
-        `**Prize:** ${giveaway.prize}`,
-        giveaway.description ?? "",
-        "",
-        renderLabel(
-          "กด **เข้าร่วม** เพื่อเลือกเมน · กด **แก้ไขข้อมูล** เพื่อเปลี่ยนเมน/ช่องทางติดต่อ — โชคดี {signals}!",
-          b,
-        ),
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    )
+    .setDescription(`**Reward:** ${giveaway.prize}`)
     .addFields(
-      { name: "Winners", value: String(giveaway.winnersCount), inline: true },
       {
         name: "Ends",
         value: giveaway.endsAt
           ? `<t:${Math.floor(giveaway.endsAt.getTime() / 1000)}:R>`
           : "—",
+        inline: true,
+      },
+      {
+        name: "จำนวนผู้ที่ได้รับรางวัล",
+        value: `${giveaway.winnersCount} คน`,
         inline: true,
       },
     )
